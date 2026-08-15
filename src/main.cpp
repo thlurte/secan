@@ -2,35 +2,11 @@
 #include <chrono>
 #include <cmath>
 #include <iostream>
-#include <iterator>
-#include <random>
 #include <string>
 #include <utility>
 #include <vector>
 
-struct SearchResult {
-  int index;
-  float distance;
-};
-
-std::pair<std::vector<float>, std::vector<int>> // adds asd asd asd asd asd asd
-generate(float min, float max, std::vector<int> shape) {
-  std::random_device rd;
-  std::mt19937 gen(rd());
-  std::uniform_real_distribution<float> dist(min, max);
-
-  int length = 1;
-  for (const auto &dim : shape) {
-    length *= dim;
-  }
-  std::vector<float> vec;
-  vec.reserve(length);
-
-  for (size_t i = 0; i < static_cast<size_t>(length); i++) {
-    vec.push_back(dist(gen));
-  }
-  return {vec, shape};
-}
+#include "secan/utils/utils.h"
 
 float l2_squared(const float *row, const float *query, int dim) {
   float diff = 0.0f;
