@@ -14,6 +14,8 @@ endif()
 add_executable(${PROJECT_NAME} 
   src/main.cpp
   src/utils/utils.cpp
+  src/search/search.cpp
+  src/search/distance.cpp
 )
 target_include_directories(${PROJECT_NAME} PUBLIC 
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
