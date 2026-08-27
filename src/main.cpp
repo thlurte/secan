@@ -1,4 +1,3 @@
-
 #include "secan/search/search.h"
 #include "secan/utils/utils.h"
 
