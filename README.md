@@ -56,11 +56,24 @@ target_link_libraries(your_target PRIVATE secan_lib)
 
 ## Benchmarks
 
-*Note: Benchmark results will be populated once baseline measurements are established.*
+Microbenchmarks are implemented using **Google Benchmark v1.9.0** with memory clobber barriers (`benchmark::DoNotOptimize`) to prevent compiler dead-code elimination.
 
-| Dataset Size | Dimensionality | Latency p50 | Latency p95 | Throughput (QPS) | Memory Footprint |
-|:---|:---|:---|:---|:---|:---|
-| TBD | TBD | TBD | TBD | TBD | TBD |
+```bash
+# Build and run microbenchmarks (Release mode required)
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build -j$(nproc)
+./build/benchmarks/bench_distance
+```
+
+### Baseline: Scalar $L_2$ Squared Distance (Unvectorized)
+*Benchmarked on 12-Core @ 4.30 GHz (L1D 32 KiB, L2 1 MiB, L3 16 MiB)*
+
+| Vector Dimension ($D$) | Workload / Embedding Model | Latency (ns) | Memory Bandwidth (GiB/s) | 1M Vector Scan Estimate |
+|:---|:---|:---:|:---:|:---:|
+| **$D = 64$** | Micro Embeddings / Image Hashes | **26.8 ns** | 17.84 GiB/s | ~26.8 ms |
+| **$D = 128$** | SIFT / Audio Features | **58.1 ns** | 16.49 GiB/s | ~58.1 ms |
+| **$D = 768$** | BERT / Standard Vector Embeddings | **513.0 ns** | 11.21 GiB/s | **~513.0 ms** |
+| **$D = 1536$** | OpenAI `text-embedding-3-small` | **1055.0 ns** | 10.89 GiB/s | **~1.05 seconds** |
 
 ## Roadmap
 

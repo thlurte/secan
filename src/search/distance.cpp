@@ -1,5 +1,4 @@
 #include <cmath>
-#include <immintrin.h>
 
 float l2_squared(const float *row, const float *query, int dim) {
   float diff = 0.0f;
@@ -21,8 +20,4 @@ float cosine_distance(const float *row, const float *query, int dim) {
   float similarity =
       dot_prod / std::sqrt(norm_query * norm_row); // overflow risk is possible
   return 1.0f - similarity;
-}
-
-float l2_squared_avx2(const float *row, const float *query, int dim) {
-  __m256 acc = _mm256_setzero_ps();
 }
