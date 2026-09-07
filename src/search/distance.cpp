@@ -3,7 +3,8 @@
 float l2_squared(const float *row, const float *query, int dim) {
   float diff = 0.0f;
   for (size_t i = 0; i < static_cast<size_t>(dim); i++) {
-    diff += (row[i] - query[i]) * (row[i] - query[i]);
+    float r_diff = row[i] - query[i];
+    diff += r_diff * r_diff;
   }
   return diff;
 }

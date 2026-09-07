@@ -10,7 +10,7 @@ static void BM_L2_Squared_Scalar(benchmark::State &state) {
   auto [a, shape_a] = generate(-1.0f, 1.0f, {dim});
   auto [b, shape_b] = generate(-1.0f, 1.0f, {dim});
 
-  while (state.KeepRunning()) {
+  for (auto _ : state) {
     float dist = l2_squared(a.data(), b.data(), dim);
     benchmark::DoNotOptimize(dist);
     benchmark::ClobberMemory();
@@ -21,6 +21,13 @@ static void BM_L2_Squared_Scalar(benchmark::State &state) {
 }
 
 // Benchmark across standard AI embedding dimensions
-BENCHMARK(BM_L2_Squared_Scalar)->Arg(64)->Arg(128)->Arg(768)->Arg(1536);
+BENCHMARK(BM_L2_Squared_Scalar)
+    ->Arg(64)
+    ->Arg(128)
+    ->Arg(256)
+    ->Arg(512)
+    ->Arg(768)
+    ->Arg(1024)
+    ->Arg(1536);
 
 BENCHMARK_MAIN();
