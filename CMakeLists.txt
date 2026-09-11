@@ -14,6 +14,7 @@ endif()
 add_library(secan_lib
   src/utils/utils.cpp
   src/utils/io.cpp
+  src/utils/metrics.cpp
   src/search/search.cpp
   src/search/distance.cpp
 )
