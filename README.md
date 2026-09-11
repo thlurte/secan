@@ -65,15 +65,29 @@ cmake --build build -j$(nproc)
 ./build/benchmarks/bench_distance
 ```
 
-### Baseline: Scalar $L_2$ Squared Distance (Unvectorized)
-*Benchmarked on 12-Core @ 4.30 GHz (L1D 32 KiB, L2 1 MiB, L3 16 MiB)*
+### Baseline: Scalar Vector Distance Kernels (Unvectorized)
+*Benchmarked on AMD Zen 4 Hawk Point 12-Core @ 4.30 GHz (L1D 32 KiB, L2 1 MiB, L3 16 MiB). Compiler: Release `-O3 -march=native -DNDEBUG`.*
 
-| Vector Dimension ($D$) | Workload / Embedding Model | Latency (ns) | Memory Bandwidth (GiB/s) | 1M Vector Scan Estimate |
-|:---|:---|:---:|:---:|:---:|
-| **$D = 64$** | Micro Embeddings / Image Hashes | **26.8 ns** | 17.84 GiB/s | ~26.8 ms |
-| **$D = 128$** | SIFT / Audio Features | **58.1 ns** | 16.49 GiB/s | ~58.1 ms |
-| **$D = 768$** | BERT / Standard Vector Embeddings | **513.0 ns** | 11.21 GiB/s | **~513.0 ms** |
-| **$D = 1536$** | OpenAI `text-embedding-3-small` | **1055.0 ns** | 10.89 GiB/s | **~1.05 seconds** |
+#### Hardware PMU Performance Counters (`perf stat`, $D = 128$)
+
+| Kernel | Dimension ($D$) | Latency (ns) | IPC | L1D Miss Rate | Branch Miss Rate | Throughput (GiB/s) |
+|:---|:---:|:---:|:---:|:---:|:---:|:---:|
+| **Scalar `l2_squared`** | 128 | **57.7 ns** | **2.18** | **0.007%** | **0.003%** | **16.53 GiB/s** |
+| **Scalar `inner_product`** | 128 | **54.4 ns** | **2.17** | **0.010%** | **0.003%** | **17.54 GiB/s** |
+| **Scalar `cosine_distance`** | 128 | **88.8 ns** | **2.14** | **0.011%** | **0.003%** | **10.74 GiB/s** |
+| **Scalar `cosine_fast` (rsqrt)** | 128 | **89.0 ns** | **2.14** | **0.011%** | **0.003%** | **10.71 GiB/s** |
+
+#### Dimensional Scaling Sweep ($D \in [64, 1536]$)
+
+| Vector Dimension ($D$) | Workload / Embedding Model | $L_2^2$ Latency | IP Latency | Cosine Latency | Effective Bandwidth |
+|:---|:---|:---:|:---:|:---:|:---:|
+| **$D = 64$** | Micro Embeddings / Image Hashes | **38.9 ns** | **26.0 ns** | 44.4 ns | 18.34 GiB/s |
+| **$D = 128$** | SIFT1M / Audio Features | **58.1 ns** | **55.6 ns** | 88.8 ns | 17.15 GiB/s |
+| **$D = 256$** | Compact Dense Representations | **151.7 ns** | **147.7 ns** | 179.7 ns | 12.91 GiB/s |
+| **$D = 512$** | Small Language Embeddings | **328.6 ns** | **323.6 ns** | 359.5 ns | 11.79 GiB/s |
+| **$D = 768$** | BERT / `all-mpnet-base-v2` | **509.6 ns** | **504.3 ns** | 541.0 ns | 11.35 GiB/s |
+| **$D = 1024$** | BGE-Large / Large Text Embeddings | **693.7 ns** | **687.1 ns** | 723.2 ns | 11.10 GiB/s |
+| **$D = 1536$** | OpenAI `text-embedding-3-small` | **1050.0 ns** | **1046.1 ns** | 1089.3 ns | 10.94 GiB/s |
 
 ## Roadmap
 
