@@ -1,6 +1,7 @@
 #ifndef SECAN_SEARCH_SEARCH_H
 #define SECAN_SEARCH_SEARCH_H
 
+#include "secan/search/distance.h"
 #include "secan/utils/io.h"
 #include "secan/utils/utils.h"
 #include <string>
@@ -13,10 +14,20 @@ std::vector<SearchResult> linear_scan(const std::vector<float> &dataset,
                                       int top_k,
                                       const std::string &method = "cosine");
 
+std::vector<SearchResult> linear_scan(const std::vector<float> &dataset,
+                                      const std::vector<float> &query,
+                                      int top_k,
+                                      MetricType metric);
+
 std::vector<SearchResult> linear_scan(const FloatDataset &dataset,
                                       const float *query,
                                       size_t top_k,
                                       const std::string &method = "l2");
+
+std::vector<SearchResult> linear_scan(const FloatDataset &dataset,
+                                      const float *query,
+                                      size_t top_k,
+                                      MetricType metric);
 
 } // namespace secan
 
