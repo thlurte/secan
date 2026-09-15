@@ -1,4 +1,5 @@
 #include "secan/search/distance.h"
+#include "secan/search/distance_avx2.h"
 #include "secan/search/search.h"
 #include "test_utils.h"
 #include <cmath>
@@ -77,16 +78,34 @@ void test_fast_rsqrt_and_cosine() {
   CHECK_NEAR(fast_cos, exact_cos, 0.005f);
 }
 
+void test_l2_squared_avx2_single() {
+  secan::enable_ftz_daz();
+
+  // Test 1: Small dimension with tail only (dim = 3)
+  float a_small[] = {1.0f, 2.0f, 3.0f};
+  float b_small[] = {4.0f, 5.0f, 6.0f};
+  CHECK(secan::l2_squared_avx2_single(a_small, b_small, 3) == 27.0f);
+
+  // Test 2: Multiple dimensions (including odd tail) compared to scalar
+  // reference
+  for (size_t dim : {8, 16, 19, 64, 128}) {
+    std::vector<float> u(dim), v(dim);
+    for (size_t i = 0; i < dim; ++i) {
+      u[i] = static_cast<float>(i + 1) * 0.5f;
+      v[i] = static_cast<float>(i + 2) * 0.25f;
+    }
+    float scalar_res = secan::l2_squared_scalar(u.data(), v.data(), dim);
+    float avx2_res = secan::l2_squared_avx2_single(u.data(), v.data(), dim);
+    CHECK_NEAR(avx2_res, scalar_res, 1e-4f);
+  }
+}
+
 void test_linear_scan_metric_types() {
   // Dataset with 3 vectors in 2D
   // 0: (1, 0)
   // 1: (0, 1)
   // 2: (2, 0)
-  std::vector<float> dataset = {
-    1.0f, 0.0f,
-    0.0f, 1.0f,
-    2.0f, 0.0f
-  };
+  std::vector<float> dataset = {1.0f, 0.0f, 0.0f, 1.0f, 2.0f, 0.0f};
   std::vector<float> query = {1.0f, 0.0f};
 
   // For IP:
@@ -118,5 +137,6 @@ int main() {
   test_cosine_distance();
   test_fast_rsqrt_and_cosine();
   test_linear_scan_metric_types();
+  test_l2_squared_avx2_single();
   return report_results("distance_tests");
 }

@@ -17,10 +17,12 @@ add_library(secan_lib
   src/utils/metrics.cpp
   src/search/search.cpp
   src/search/distance.cpp
+  src/search/distance_avx2.cpp
 )
 target_include_directories(secan_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
+target_compile_options(secan_lib PUBLIC -mavx2 -mfma)
 
 # --- dependency: google benchmark, evaluates search algos ---
 include(FetchContent)
