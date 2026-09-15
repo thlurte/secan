@@ -65,36 +65,40 @@ cmake --build build -j$(nproc)
 ./build/benchmarks/bench_distance
 ```
 
-### Baseline: Scalar Vector Distance Kernels (Unvectorized)
-*Benchmarked on AMD Zen 4 Hawk Point 12-Core @ 4.30 GHz (L1D 32 KiB, L2 1 MiB, L3 16 MiB). Compiler: Release `-O3 -march=native -DNDEBUG`.*
+### Baseline vs SIMD Vectorized Distance Kernels (AVX2 & FMA)
+*Benchmarked on AMD Zen 4 Hawk Point 12-Core @ 4.30 GHz (L1D 32 KiB, L2 1 MiB, L3 16 MiB). Compiler: Release `-O3 -mavx2 -mfma -DNDEBUG`.*
+
+#### $L_2^2$ Vector Distance Dimensional Scaling Sweep ($D \in [64, 1536]$)
+
+| Vector Dimension ($D$) | Workload / Embedding Model | Scalar Baseline | AVX2 Single (1-acc) | **AVX2 Unroll-4 (4-acc)** | **Overall Speedup** | **Peak Bandwidth** |
+|:---|:---|:---:|:---:|:---:|:---:|:---:|
+| **$D = 64$** | Micro Embeddings / Image Hashes | $26.1\text{ ns}$ | $4.35\text{ ns}$ | **$3.62\text{ ns}$** | **$7.2\times$** | $131.7\text{ GiB/s}$ |
+| **$D = 128$** | SIFT1M / Audio Features | $59.0\text{ ns}$ | $7.64\text{ ns}$ | **$6.72\text{ ns}$** | **$8.8\times$** | $141.9\text{ GiB/s}$ |
+| **$D = 256$** | Compact Dense Representations | $148.0\text{ ns}$ | $15.6\text{ ns}$ | **$9.68\text{ ns}$** | **$15.3\times$** | **$197.1\text{ GiB/s}$** |
+| **$D = 512$** | Small Language Embeddings | $332.0\text{ ns}$ | $40.2\text{ ns}$ | **$21.7\text{ ns}$** | **$15.4\times$** | $175.9\text{ GiB/s}$ |
+| **$D = 768$** | BERT / `all-mpnet-base-v2` | $515.0\text{ ns}$ | $60.0\text{ ns}$ | **$32.5\text{ ns}$** | **$15.9\times$** | $176.2\text{ GiB/s}$ |
+| **$D = 1024$** | BGE-Large / Large Text Embeddings | $699.0\text{ ns}$ | $84.3\text{ ns}$ | **$43.9\text{ ns}$** | **$16.0\times$** | $173.7\text{ GiB/s}$ |
+| **$D = 1536$** | OpenAI `text-embedding-3-small/large` | $1071.0\text{ ns}$ | $147.0\text{ ns}$ | **$67.5\text{ ns}$** | **$15.9\times$** | $169.4\text{ GiB/s}$ |
 
 #### Hardware PMU Performance Counters (`perf stat`, $D = 128$)
 
 | Kernel | Dimension ($D$) | Latency (ns) | IPC | L1D Miss Rate | Branch Miss Rate | Throughput (GiB/s) |
 |:---|:---:|:---:|:---:|:---:|:---:|:---:|
-| **Scalar `l2_squared`** | 128 | **57.7 ns** | **2.18** | **0.007%** | **0.003%** | **16.53 GiB/s** |
-| **Scalar `inner_product`** | 128 | **54.4 ns** | **2.17** | **0.010%** | **0.003%** | **17.54 GiB/s** |
-| **Scalar `cosine_distance`** | 128 | **88.8 ns** | **2.14** | **0.011%** | **0.003%** | **10.74 GiB/s** |
-| **Scalar `cosine_fast` (rsqrt)** | 128 | **89.0 ns** | **2.14** | **0.011%** | **0.003%** | **10.71 GiB/s** |
-
-#### Dimensional Scaling Sweep ($D \in [64, 1536]$)
-
-| Vector Dimension ($D$) | Workload / Embedding Model | $L_2^2$ Latency | IP Latency | Cosine Latency | Effective Bandwidth |
-|:---|:---|:---:|:---:|:---:|:---:|
-| **$D = 64$** | Micro Embeddings / Image Hashes | **38.9 ns** | **26.0 ns** | 44.4 ns | 18.34 GiB/s |
-| **$D = 128$** | SIFT1M / Audio Features | **58.1 ns** | **55.6 ns** | 88.8 ns | 17.15 GiB/s |
-| **$D = 256$** | Compact Dense Representations | **151.7 ns** | **147.7 ns** | 179.7 ns | 12.91 GiB/s |
-| **$D = 512$** | Small Language Embeddings | **328.6 ns** | **323.6 ns** | 359.5 ns | 11.79 GiB/s |
-| **$D = 768$** | BERT / `all-mpnet-base-v2` | **509.6 ns** | **504.3 ns** | 541.0 ns | 11.35 GiB/s |
-| **$D = 1024$** | BGE-Large / Large Text Embeddings | **693.7 ns** | **687.1 ns** | 723.2 ns | 11.10 GiB/s |
-| **$D = 1536$** | OpenAI `text-embedding-3-small` | **1050.0 ns** | **1046.1 ns** | 1089.3 ns | 10.94 GiB/s |
+| **Scalar `l2_squared`** | 128 | 59.0 ns | 2.18 | 0.007% | 0.003% | 16.16 GiB/s |
+| **AVX2 Single `l2_squared`** | 128 | 7.64 ns | 1.85 | 0.005% | 0.001% | 124.80 GiB/s |
+| **AVX2 Unroll-4 `l2_squared`** | 128 | **6.72 ns** | **3.42** | **0.004%** | **0.001%** | **141.94 GiB/s** |
 
 ## Roadmap
 
-- SIMD-vectorized distance computation
-- Cache-aware memory layout
-- Multithreaded search
-- HNSW as an approximate-search mode
+- [x] Scalar Baseline Distance Kernels (L2, IP, Cosine, Fast Reciprocal Cosine)
+- [x] Hardware Floating-Point State Control (FTZ/DAZ)
+- [x] AVX2 + FMA Single-Accumulator Distance Kernel
+- [x] AVX2 Multi-Accumulator ILP Unrolling (4-way register parallelism)
+- [ ] AVX-512 Distance Kernels with portable runtime dispatch
+- [ ] Cache-aware memory layout & blocked matrix scans
+- [ ] Multithreaded concurrent query engine
+- [ ] HNSW graph indexing for sub-millisecond approximate nearest neighbor search
+
 
 ## License
 
