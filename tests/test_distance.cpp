@@ -131,6 +131,24 @@ void test_linear_scan_metric_types() {
   CHECK(res_l2[2].index == 1);
 }
 
+void test_l2_squared_avx2_unroll4() {
+  secan::enable_ftz_daz();
+
+  // Test across multiple dimensions (small tail only, full 32-chunk, 32-chunk + vector tail + scalar tail)
+  for (size_t dim : {3, 8, 16, 32, 45, 64, 128, 768, 1536}) {
+    std::vector<float> u(dim), v(dim);
+    for (size_t i = 0; i < dim; ++i) {
+      u[i] = std::sin(static_cast<float>(i + 1));
+      v[i] = std::cos(static_cast<float>(i + 2));
+    }
+    float scalar_res = secan::l2_squared_scalar(u.data(), v.data(), dim);
+    float unroll4_res = secan::l2_squared_avx2_unroll4(u.data(), v.data(), dim);
+    CHECK_NEAR(unroll4_res, scalar_res, 1e-2f);
+  }
+}
+
+
+
 int main() {
   test_l2_squared();
   test_inner_product();
@@ -138,5 +156,7 @@ int main() {
   test_fast_rsqrt_and_cosine();
   test_linear_scan_metric_types();
   test_l2_squared_avx2_single();
+  test_l2_squared_avx2_unroll4();
   return report_results("distance_tests");
 }
+
