@@ -147,7 +147,40 @@ void test_l2_squared_avx2_unroll4() {
   }
 }
 
+void test_cosine_distance_avx2() {
+  secan::enable_ftz_daz();
 
+  // 1. Basic geometric properties
+  float a[] = {1.0f, 2.0f, 3.0f};
+  CHECK_NEAR(secan::cosine_distance_avx2(a, a, 3), 0.0f, 1e-5f);
+
+  float a_scaled[] = {2.0f, 4.0f, 6.0f};
+  CHECK_NEAR(secan::cosine_distance_avx2(a, a_scaled, 3), 0.0f, 1e-5f);
+
+  float a_neg[] = {-1.0f, -2.0f, -3.0f};
+  CHECK_NEAR(secan::cosine_distance_avx2(a, a_neg, 3), 2.0f, 1e-5f);
+
+  float x[] = {1.0f, 0.0f};
+  float y[] = {0.0f, 1.0f};
+  CHECK_NEAR(secan::cosine_distance_avx2(x, y, 2), 1.0f, 1e-5f);
+
+  // Zero-vector handling (safe zero-denominator check without NaN)
+  float zeros[] = {0.0f, 0.0f, 0.0f};
+  CHECK(secan::cosine_distance_avx2(zeros, a, 3) == 0.0f);
+  CHECK(secan::cosine_distance_avx2(zeros, zeros, 3) == 0.0f);
+
+  // 2. Multi-dimensional precision parity against scalar reference
+  for (size_t dim : {3, 7, 8, 16, 19, 32, 64, 128, 768, 1536}) {
+    std::vector<float> u(dim), v(dim);
+    for (size_t i = 0; i < dim; ++i) {
+      u[i] = std::sin(static_cast<float>(i + 1) * 0.7f);
+      v[i] = std::cos(static_cast<float>(i + 2) * 0.5f);
+    }
+    float scalar_res = secan::cosine_distance_scalar(u.data(), v.data(), dim);
+    float avx2_res = secan::cosine_distance_avx2(u.data(), v.data(), dim);
+    CHECK_NEAR(avx2_res, scalar_res, 1e-4f);
+  }
+}
 
 int main() {
   test_l2_squared();
@@ -157,6 +190,7 @@ int main() {
   test_linear_scan_metric_types();
   test_l2_squared_avx2_single();
   test_l2_squared_avx2_unroll4();
+  test_cosine_distance_avx2();
   return report_results("distance_tests");
 }
 

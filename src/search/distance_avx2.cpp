@@ -1,4 +1,6 @@
 #include "secan/search/distance_avx2.h"
+#include <algorithm>
+#include <cmath>
 #include <immintrin.h>
 
 namespace secan {
@@ -6,6 +8,15 @@ namespace secan {
 void enable_ftz_daz() noexcept {
   _MM_SET_FLUSH_ZERO_MODE(_MM_FLUSH_ZERO_ON);
   _MM_SET_DENORMALS_ZERO_MODE(_MM_DENORMALS_ZERO_ON);
+}
+
+inline float horizontal_sum_avx2(__m256 v) noexcept {
+  __m128 lo = _mm256_castps256_ps128(v);
+  __m128 hi = _mm256_extractf128_ps(v, 1);
+  __m128 sum128 = _mm_add_ps(lo, hi);
+  sum128 = _mm_hadd_ps(sum128, sum128);
+  sum128 = _mm_hadd_ps(sum128, sum128);
+  return _mm_cvtss_f32(sum128);
 }
 
 float l2_squared_avx2_single(const float *a, const float *b,
@@ -98,6 +109,40 @@ float l2_squared_avx2_unroll4(const float *a, const float *b,
   }
 
   return total;
+}
+
+float cosine_distance_avx2(const float *a, const float *b,
+                           size_t dim) noexcept {
+  __m256 sum_dot = _mm256_setzero_ps();
+  __m256 sum_na  = _mm256_setzero_ps();
+  __m256 sum_nb  = _mm256_setzero_ps();
+
+  size_t i = 0;
+  for (; i + 8 <= dim; i += 8) {
+    __m256 va = _mm256_loadu_ps(a + i);
+    __m256 vb = _mm256_loadu_ps(b + i);
+    sum_dot = _mm256_fmadd_ps(va, vb, sum_dot);
+    sum_na  = _mm256_fmadd_ps(va, va, sum_na);
+    sum_nb  = _mm256_fmadd_ps(vb, vb, sum_nb);
+  }
+
+  float dot = horizontal_sum_avx2(sum_dot);
+  float na  = horizontal_sum_avx2(sum_na);
+  float nb  = horizontal_sum_avx2(sum_nb);
+
+  // Scalar tail
+  for (; i < dim; ++i) {
+    dot += a[i] * b[i];
+    na  += a[i] * a[i];
+    nb  += b[i] * b[i];
+  }
+
+  float denom = std::sqrt(na * nb);
+  if (denom <= 1e-12f) {
+    return 0.0f;
+  }
+  float similarity = std::clamp(dot / denom, -1.0f, 1.0f);
+  return 1.0f - similarity;
 }
 
 } // namespace secan
