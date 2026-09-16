@@ -26,11 +26,10 @@ Targeted, micro-drills designed to build instinctual C++ reflexes for memory lay
 
 ---
 
-## Day 012 (Wednesday, 2026-09-16) — Fused Memory Passes & Vector Scaling
+## Day 012 (Wednesday, 2026-09-16) — Fused Memory Passes & Roofline Limits
 
 | Drill | Title | Key Concepts | Status | File |
 |:---:|:---|:---|:---:|:---|
 | **01** | Fused 1-Pass Cosine Distance | Computing $\langle a,b\rangle, \|a\|^2, \|b\|^2$ simultaneously in 1 pass | ✅ Completed | [`day012_drill_01_fused_cosine.cpp`](day012_drill_01_fused_cosine.cpp) |
-| **02** | Vector Broadcast Scaling | `_mm256_set1_ps`, `_mm256_mul_ps`, scaling 8 floats in 1 cycle | ⏳ Ready | [`day012_drill_02_broadcast_scaling.cpp`](day012_drill_02_broadcast_scaling.cpp) |
-| **03** | Peak Single-Core GFLOPS | Calculating execution port saturation on Zen 4 Pipes 0 & 1 | ⏳ Ready | [`day012_drill_03_peak_gflops.cpp`](day012_drill_03_peak_gflops.cpp) |
-| **04** | Fused 1-Pass vs 2-Pass Memory | Comparing memory bus load count ($2\times$ vs $4\times$ reads) | ⏳ Ready | [`day012_drill_04_pass_comparison.cpp`](day012_drill_04_pass_comparison.cpp) |
+| **02** | Peak Single-Core GFLOPS | Calculating execution port saturation on Zen 4 Pipes 0 & 1 (137.6 GFLOPS) | ✅ Completed | [`day012_drill_02_peak_gflops.cpp`](day012_drill_02_peak_gflops.cpp) |
+| **03** | Fused 1-Pass vs 2-Pass Memory | Halving memory bus load traffic ($50\%$ bandwidth reduction) | ✅ Completed | [`day012_drill_03_pass_comparison.cpp`](day012_drill_03_pass_comparison.cpp) |
