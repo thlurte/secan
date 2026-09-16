@@ -88,12 +88,27 @@ cmake --build build -j$(nproc)
 | **AVX2 Single `l2_squared`** | 128 | 7.64 ns | 1.85 | 0.005% | 0.001% | 124.80 GiB/s |
 | **AVX2 Unroll-4 `l2_squared`** | 128 | **6.72 ns** | **3.42** | **0.004%** | **0.001%** | **141.94 GiB/s** |
 
+#### Fused 1-Pass AVX2 Cosine Distance Dimensional Sweep ($D \in [64, 1536]$)
+
+*Concurrently computes $\sum a_i b_i$, $\sum a_i^2$, and $\sum b_i^2$ in a single SIMD pass, eliminating redundant memory round-trips and reducing cache line traffic by $66\%$.*
+
+| Vector Dimension ($D$) | Workload / Embedding Model | Scalar Cosine | Fast Reciprocal Cosine | **Fused AVX2 Cosine** | **Speedup** | **Peak Bandwidth** |
+|:---|:---|:---:|:---:|:---:|:---:|:---:|
+| **$D = 64$** | Micro Embeddings / Image Hashes | $131.0\text{ ns}$ | $99.4\text{ ns}$ | **$8.64\text{ ns}$** | **$15.2\times$** | $55.2\text{ GiB/s}$ |
+| **$D = 128$** | SIFT1M / Audio Features | $277.0\text{ ns}$ | $128.0\text{ ns}$ | **$13.40\text{ ns}$** | **$20.7\times$** | **$71.3\text{ GiB/s}$** |
+| **$D = 256$** | Compact Dense Representations | $574.0\text{ ns}$ | $182.0\text{ ns}$ | **$27.20\text{ ns}$** | **$21.1\times$** | $70.3\text{ GiB/s}$ |
+| **$D = 512$** | Small Language Embeddings | $1151.0\text{ ns}$ | $359.0\text{ ns}$ | **$54.50\text{ ns}$** | **$21.1\times$** | $70.1\text{ GiB/s}$ |
+| **$D = 768$** | BERT / `all-mpnet-base-v2` | $1730.0\text{ ns}$ | $540.0\text{ ns}$ | **$84.50\text{ ns}$** | **$20.5\times$** | $67.7\text{ GiB/s}$ |
+| **$D = 1024$** | BGE-Large / Large Text Embeddings | $2310.0\text{ ns}$ | $723.0\text{ ns}$ | **$114.0\text{ ns}$** | **$20.3\times$** | $66.7\text{ GiB/s}$ |
+| **$D = 1536$** | OpenAI `text-embedding-3-small/large` | $3295.0\text{ ns}$ | $1082.0\text{ ns}$ | **$175.0\text{ ns}$** | **$18.8\times$** | $65.4\text{ GiB/s}$ |
+
 ## Roadmap
 
 - [x] Scalar Baseline Distance Kernels (L2, IP, Cosine, Fast Reciprocal Cosine)
 - [x] Hardware Floating-Point State Control (FTZ/DAZ)
 - [x] AVX2 + FMA Single-Accumulator Distance Kernel
 - [x] AVX2 Multi-Accumulator ILP Unrolling (4-way register parallelism)
+- [x] Fused 1-Pass AVX2 Cosine Distance Kernel (66% cache bus traffic reduction)
 - [ ] AVX-512 Distance Kernels with portable runtime dispatch
 - [ ] Cache-aware memory layout & blocked matrix scans
 - [ ] Multithreaded concurrent query engine
