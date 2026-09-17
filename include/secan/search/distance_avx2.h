@@ -16,6 +16,9 @@ float l2_squared_avx2_unroll4(const float *a, const float *b,
 float cosine_distance_avx2(const float *a, const float *b,
                            size_t dim) noexcept;
 
+float ip_avx2_unroll4(const float *a, const float *b,
+                      size_t dim) noexcept;
+
 } // namespace secan
 
 #endif // SECAN_SEARCH_DISTANCE_AVX2_H
