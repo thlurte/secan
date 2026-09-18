@@ -1,5 +1,6 @@
 #include "secan/search/distance.h"
 #include "secan/search/distance_avx2.h"
+#include "secan/search/distance_avx512.h"
 #include "secan/search/search.h"
 #include "test_utils.h"
 #include <cmath>
@@ -197,6 +198,36 @@ void test_ip_avx2_unroll4() {
   }
 }
 
+void test_l2_squared_avx512() {
+  secan::enable_ftz_daz();
+
+  for (size_t dim : {1, 3, 7, 8, 15, 16, 19, 31, 32, 45, 64, 128, 768, 1536}) {
+    std::vector<float> u(dim), v(dim);
+    for (size_t i = 0; i < dim; ++i) {
+      u[i] = std::sin(static_cast<float>(i + 1));
+      v[i] = std::cos(static_cast<float>(i + 2));
+    }
+    float scalar_res = secan::l2_squared_scalar(u.data(), v.data(), dim);
+    float avx512_res = secan::l2_squared_avx512(u.data(), v.data(), dim);
+    CHECK_NEAR(avx512_res, scalar_res, 1e-2f);
+  }
+}
+
+void test_ip_avx512() {
+  secan::enable_ftz_daz();
+
+  for (size_t dim : {1, 3, 7, 8, 15, 16, 31, 32, 45, 64, 128, 768, 1536}) {
+    std::vector<float> u(dim), v(dim);
+    for (size_t i = 0; i < dim; ++i) {
+      u[i] = std::sin(static_cast<float>(i + 1) * 0.3f);
+      v[i] = std::cos(static_cast<float>(i + 2) * 0.7f);
+    }
+    float scalar_res = secan::inner_product_scalar(u.data(), v.data(), dim);
+    float avx512_res = secan::ip_avx512(u.data(), v.data(), dim);
+    CHECK_NEAR(avx512_res, scalar_res, 1e-3f);
+  }
+}
+
 int main() {
   test_l2_squared();
   test_inner_product();
@@ -207,6 +238,8 @@ int main() {
   test_l2_squared_avx2_unroll4();
   test_cosine_distance_avx2();
   test_ip_avx2_unroll4();
+  test_l2_squared_avx512();
+  test_ip_avx512();
   return report_results("distance_tests");
 }
 

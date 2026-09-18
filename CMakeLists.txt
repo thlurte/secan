@@ -18,10 +18,12 @@ add_library(secan_lib
   src/search/search.cpp
   src/search/distance.cpp
   src/search/distance_avx2.cpp
+  src/search/distance_avx512.cpp
 )
 target_include_directories(secan_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
 )
+set_source_files_properties(src/search/distance_avx512.cpp PROPERTIES COMPILE_FLAGS "-mavx512f -mavx512dq -mavx512bw -mavx512vl")
 target_compile_options(secan_lib PUBLIC -mavx2 -mfma)
 
 # --- dependency: google benchmark, evaluates search algos ---
