@@ -62,8 +62,29 @@ Microbenchmarks are implemented using **Google Benchmark v1.9.0** with memory cl
 # Build and run microbenchmarks (Release mode required)
 cmake -B build -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j$(nproc)
+
+# 1. Individual vector distance microbenchmarks
 ./build/benchmarks/bench_distance
+
+# 2. Exact linear scan working set scaling across cache hierarchy
+./build/benchmarks/bench_exact_scan
+
+# 3. Automated Memory Mountain sweep
+python3 scripts/sweep_memory_mountain.py
 ```
+
+### Exact Scan Working Set Scaling & Cache Hierarchy Cliffs
+*Benchmarked on AMD Zen 4 Hawk Point (L1D 32 KiB, L2 1 MiB, L3 16 MiB). Dataset: $N$ vectors of dimension $D = 128$ (float32).*
+
+| Dataset Size ($N$) | Working Set (MB) | Cache Residency | Scalar Throughput | AVX2 Unroll-4 | **AVX-512 Scan** | **Per-Vector Latency** | **IPC** |
+|:---|:---|:---|:---:|:---:|:---:|:---:|:---:|
+| **$N = 100$** | $0.051\text{ MB}$ ($51.2\text{ KB}$) | L1D / L2 | $3.10\text{ GiB/s}$ | $30.60\text{ GiB/s}$ | **$40.56\text{ GiB/s}$** | $11.76\text{ ns}$ | $3.12$ |
+| **$N = 1,000$** | $0.512\text{ MB}$ ($512\text{ KB}$) | L2 Resident | $2.72\text{ GiB/s}$ | $25.28\text{ GiB/s}$ | **$58.65\text{ GiB/s}$** | $8.13\text{ ns}$ | $3.45$ |
+| **$N = 10,000$** | $5.120\text{ MB}$ | L3 Resident | $2.70\text{ GiB/s}$ | $24.04\text{ GiB/s}$ | **$67.63\text{ GiB/s}$** | **$7.05\text{ ns}$** | **$3.27$** |
+| **$N = 100,000$** | $51.20\text{ MB}$ | DRAM Spilled ($>16\text{MB}$) | $2.70\text{ GiB/s}$ | $13.75\text{ GiB/s}$ | **$14.82\text{ GiB/s}$** | $32.17\text{ ns}$ | $1.15$ |
+| **$N = 1,000,000$** | $512.0\text{ MB}$ (SIFT1M) | DRAM Bound | $3.07\text{ GiB/s}$ | $13.47\text{ GiB/s}$ | **$14.28\text{ GiB/s}$** | $33.38\text{ ns}$ | $1.08$ |
+
+> **Key Architectural Insight**: Once the working set exceeds the 16 MiB L3 cache boundary ($N > 32{,}000$), scan throughput drops by **$4.73\times$** (from $67.63\text{ GiB/s}$ down to $14.28\text{ GiB/s}$), and IPC collapses from **$3.27$ down to $1.08$**. The SIMD compute units spend $>70\%$ of their cycles stalled waiting for main memory DRAM line fetches. This establishes the critical empirical motivation for cache-tiled scanning, vector quantization (PQ/SQ), and graph-based ANN indexing (HNSW).
 
 ### Baseline vs SIMD Vectorized Distance Kernels (AVX2 & AVX-512)
 *Benchmarked on AMD Zen 4 Hawk Point 12-Core @ 4.30 GHz (L1D 32 KiB, L2 1 MiB, L3 16 MiB). Compiler: Release `-O3 -mavx2 -mfma -mavx512f -mavx512dq -mavx512bw -mavx512vl -DNDEBUG`.*
@@ -123,9 +144,11 @@ cmake --build build -j$(nproc)
 - [x] AVX2 Multi-Accumulator ILP Unrolling (4-way register parallelism)
 - [x] Fused 1-Pass AVX2 Cosine Distance Kernel (66% cache bus traffic reduction)
 - [x] AVX-512 Distance Kernels (512-bit ZMM dual-accumulator unrolling)
+- [x] Memory scaling sweeps & cache eviction cliffs characterization ($N \in [100, 10^6]$)
 - [ ] Cache-aware memory layout & blocked matrix scans
 - [ ] Multithreaded concurrent query engine
 - [ ] HNSW graph indexing for sub-millisecond approximate nearest neighbor search
+
 
 
 ## License
