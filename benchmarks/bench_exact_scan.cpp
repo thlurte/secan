@@ -123,11 +123,50 @@ static void BM_LinearScan_Top10(benchmark::State &state) {
   state.SetBytesProcessed(state.iterations() * n * dim * sizeof(float));
 }
 
+// ----------------------------------------------------------------------------
+// 4. Batched Tiled Linear Scan (Q=64 queries, Top-K=10) with L2 Cache Tiling
+// ----------------------------------------------------------------------------
+
+static void BM_BatchLinearScan_Untiled(benchmark::State &state) {
+  secan::enable_ftz_daz();
+  const size_t n = state.range(0);
+  const size_t dim = 128;
+  const size_t num_queries = 64;
+  std::vector<float> data(n * dim, 0.5f);
+  std::vector<float> queries(num_queries * dim, 1.0f);
+
+  for (auto _ : state) {
+    std::vector<std::vector<SearchResult>> all_results(num_queries);
+    for (size_t q = 0; q < num_queries; ++q) {
+      all_results[q] = secan::linear_scan(data, std::vector<float>(queries.begin() + q * dim, queries.begin() + (q + 1) * dim), 10, secan::MetricType::L2);
+    }
+    benchmark::DoNotOptimize(all_results);
+  }
+  state.SetBytesProcessed(state.iterations() * num_queries * n * dim * sizeof(float));
+}
+
+static void BM_BatchLinearScan_Tiled(benchmark::State &state) {
+  secan::enable_ftz_daz();
+  const size_t n = state.range(0);
+  const size_t dim = 128;
+  const size_t num_queries = 64;
+  std::vector<float> data(n * dim, 0.5f);
+  std::vector<float> queries(num_queries * dim, 1.0f);
+
+  for (auto _ : state) {
+    auto res = secan::batch_linear_scan_tiled(queries.data(), num_queries, data.data(), n, dim, 10, /*tile_size=*/2048);
+    benchmark::DoNotOptimize(res);
+  }
+  state.SetBytesProcessed(state.iterations() * num_queries * n * dim * sizeof(float));
+}
+
 // Register Exact Scan sweeps across working sets
 BENCHMARK(BM_ExactScan_Scalar)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_ExactScan_AVX2)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_ExactScan_AVX512)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_LinearScan_Top10)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000);
+BENCHMARK(BM_BatchLinearScan_Untiled)->Arg(10000)->Arg(100000);
+BENCHMARK(BM_BatchLinearScan_Tiled)->Arg(10000)->Arg(100000);
 
 // Register Memory Mountain sweep args: sizes in KB x strides in elements
 static void CustomMemoryMountainArgs(benchmark::internal::Benchmark *b) {

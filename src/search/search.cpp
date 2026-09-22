@@ -1,6 +1,8 @@
 #include "secan/search/search.h"
 #include "secan/search/distance.h"
+#include "secan/search/distance_avx2.h"
 #include <algorithm>
+#include <queue>
 #include <stdexcept>
 
 namespace secan {
@@ -114,4 +116,65 @@ std::vector<SearchResult> linear_scan(const FloatDataset &dataset,
   return linear_scan(dataset, query, top_k, parse_metric(method));
 }
 
+std::vector<TopKQueryResult> batch_linear_scan_tiled(
+    const float *queries, size_t num_queries,
+    const float *base, size_t num_base,
+    size_t dim, size_t k,
+    size_t tile_size) {
+  if (num_queries == 0 || num_base == 0 || dim == 0 || k == 0 || queries == nullptr || base == nullptr) {
+    return std::vector<TopKQueryResult>(num_queries);
+  }
+
+  const size_t safe_k = std::min(k, num_base);
+  std::vector<std::priority_queue<std::pair<float, int32_t>>> heaps(num_queries);
+
+  // Outer loop over database tiles (streamed once from DRAM into L2/L3 cache)
+  for (size_t t = 0; t < num_base; t += tile_size) {
+    const size_t cur_tile_size = std::min(tile_size, num_base - t);
+    const float *tile_data = base + t * dim;
+
+    // Inner loop over queries (reusing the tile resident in cache)
+    for (size_t q = 0; q < num_queries; ++q) {
+      const float *q_vec = queries + q * dim;
+      auto &heap = heaps[q];
+
+      for (size_t i = 0; i < cur_tile_size; ++i) {
+        const int32_t global_idx = static_cast<int32_t>(t + i);
+        const float *b_vec = tile_data + i * dim;
+        const float dist = l2_squared_avx2_unroll4(q_vec, b_vec, dim);
+
+        if (heap.size() < safe_k) {
+          heap.emplace(dist, global_idx);
+        } else if (dist < heap.top().first) {
+          heap.pop();
+          heap.emplace(dist, global_idx);
+        }
+      }
+    }
+  }
+
+  std::vector<TopKQueryResult> results(num_queries);
+  for (size_t q = 0; q < num_queries; ++q) {
+    auto &heap = heaps[q];
+    results[q].indices.resize(heap.size());
+    results[q].distances.resize(heap.size());
+    for (int i = static_cast<int>(heap.size()) - 1; i >= 0; --i) {
+      results[q].distances[i] = heap.top().first;
+      results[q].indices[i] = heap.top().second;
+      heap.pop();
+    }
+  }
+  return results;
+}
+
+std::vector<TopKQueryResult> batch_linear_scan_tiled(
+    const FloatDataset &dataset,
+    const float *queries, size_t num_queries,
+    size_t top_k,
+    size_t tile_size) {
+  return batch_linear_scan_tiled(queries, num_queries, dataset.data.data(),
+                                 dataset.num_vectors, dataset.dim, top_k, tile_size);
+}
+
 } // namespace secan
+
