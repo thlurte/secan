@@ -54,8 +54,45 @@ void test_batch_linear_scan_tiled() {
   }
 }
 
+void test_linear_scan_with_prefetch() {
+  const size_t num_vectors = 200;
+  const size_t dim = 128;
+  secan::FloatDataset ds;
+  ds.num_vectors = num_vectors;
+  ds.dim = dim;
+  ds.data.resize(num_vectors * dim);
+
+  for (size_t i = 0; i < num_vectors; ++i) {
+    for (size_t d = 0; d < dim; ++d) {
+      ds.data[i * dim + d] = static_cast<float>(i * 3 + d);
+    }
+  }
+
+  std::vector<float> query(dim);
+  for (size_t d = 0; d < dim; ++d) {
+    query[d] = static_cast<float>(42 * 3 + d); // Exact match at index 42
+  }
+
+  // Baseline standard scan
+  auto baseline = secan::linear_scan(ds, query.data(), 10, secan::MetricType::L2);
+
+  // Prefetch scan with lookaheads 0, 4, 8, 16, 32
+  for (size_t lookahead : {0, 4, 8, 16, 32}) {
+    auto prefetch_res = secan::linear_scan_with_prefetch(ds, query.data(), 10, secan::MetricType::L2, lookahead);
+    CHECK(prefetch_res.size() == 10);
+    CHECK(prefetch_res[0].index == 42);
+    CHECK(std::abs(prefetch_res[0].distance) < 1e-5f);
+
+    for (size_t i = 0; i < 10; ++i) {
+      CHECK(prefetch_res[i].index == baseline[i].index);
+      CHECK(std::abs(prefetch_res[i].distance - baseline[i].distance) < 1e-5f);
+    }
+  }
+}
+
 int main() {
   test_linear_scan_finds_exact_match();
   test_batch_linear_scan_tiled();
+  test_linear_scan_with_prefetch();
   return report_results("linear_scan_tests");
 }

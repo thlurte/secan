@@ -160,6 +160,68 @@ static void BM_BatchLinearScan_Tiled(benchmark::State &state) {
   state.SetBytesProcessed(state.iterations() * num_queries * n * dim * sizeof(float));
 }
 
+// ----------------------------------------------------------------------------
+// 5. Software Prefetching Lookahead Distance Sweep (N=100,000 vectors = 51.2 MB)
+// ----------------------------------------------------------------------------
+
+static void BM_LinearScan_PrefetchSweep(benchmark::State &state) {
+  secan::enable_ftz_daz();
+  const size_t n = 100000;
+  const size_t dim = 128;
+  const size_t prefetch_ahead = state.range(0);
+
+  secan::FloatDataset ds;
+  ds.num_vectors = n;
+  ds.dim = dim;
+  ds.data.resize(n * dim, 0.5f);
+
+  std::vector<float> query(dim, 1.0f);
+
+  for (auto _ : state) {
+    auto res = secan::linear_scan_with_prefetch(ds, query.data(), 10, secan::MetricType::L2, prefetch_ahead);
+    benchmark::DoNotOptimize(res);
+  }
+  state.SetBytesProcessed(state.iterations() * n * dim * sizeof(float));
+}
+
+// ----------------------------------------------------------------------------
+// 6. Cosine vs Pre-Normalized Inner Product Scan
+// ----------------------------------------------------------------------------
+
+static void BM_Scan_Cosine_Online(benchmark::State &state) {
+  secan::enable_ftz_daz();
+  const size_t n = 100000;
+  const size_t dim = 128;
+  secan::FloatDataset ds;
+  ds.num_vectors = n;
+  ds.dim = dim;
+  ds.data.resize(n * dim, 0.5f);
+  std::vector<float> query(dim, 1.0f);
+
+  for (auto _ : state) {
+    auto res = secan::linear_scan(ds, query.data(), 10, secan::MetricType::Cosine);
+    benchmark::DoNotOptimize(res);
+  }
+  state.SetBytesProcessed(state.iterations() * n * dim * sizeof(float));
+}
+
+static void BM_Scan_PreNormalized_IP(benchmark::State &state) {
+  secan::enable_ftz_daz();
+  const size_t n = 100000;
+  const size_t dim = 128;
+  secan::FloatDataset ds;
+  ds.num_vectors = n;
+  ds.dim = dim;
+  ds.data.resize(n * dim, 0.5f);
+  std::vector<float> query(dim, 1.0f);
+
+  for (auto _ : state) {
+    auto res = secan::linear_scan(ds, query.data(), 10, secan::MetricType::IP);
+    benchmark::DoNotOptimize(res);
+  }
+  state.SetBytesProcessed(state.iterations() * n * dim * sizeof(float));
+}
+
 // Register Exact Scan sweeps across working sets
 BENCHMARK(BM_ExactScan_Scalar)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000)->Arg(1000000);
 BENCHMARK(BM_ExactScan_AVX2)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000)->Arg(1000000);
@@ -167,6 +229,9 @@ BENCHMARK(BM_ExactScan_AVX512)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000)->Ar
 BENCHMARK(BM_LinearScan_Top10)->Arg(100)->Arg(1000)->Arg(10000)->Arg(100000);
 BENCHMARK(BM_BatchLinearScan_Untiled)->Arg(10000)->Arg(100000);
 BENCHMARK(BM_BatchLinearScan_Tiled)->Arg(10000)->Arg(100000);
+BENCHMARK(BM_LinearScan_PrefetchSweep)->Arg(0)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32)->Arg(64);
+BENCHMARK(BM_Scan_Cosine_Online);
+BENCHMARK(BM_Scan_PreNormalized_IP);
 
 // Register Memory Mountain sweep args: sizes in KB x strides in elements
 static void CustomMemoryMountainArgs(benchmark::internal::Benchmark *b) {

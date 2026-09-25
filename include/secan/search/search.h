@@ -29,6 +29,21 @@ std::vector<SearchResult> linear_scan(const FloatDataset &dataset,
                                       size_t top_k,
                                       MetricType metric);
 
+// Linear scan with explicit software prefetching
+std::vector<SearchResult> linear_scan_with_prefetch(
+    const FloatDataset &dataset,
+    const float *query,
+    size_t top_k,
+    MetricType metric = MetricType::L2,
+    size_t prefetch_ahead = 8);
+
+std::vector<SearchResult> linear_scan_with_prefetch(
+    const FloatDataset &dataset,
+    const float *query,
+    size_t top_k,
+    const std::string &method,
+    size_t prefetch_ahead = 8);
+
 struct TopKQueryResult {
   std::vector<int32_t> indices;
   std::vector<float> distances;
@@ -51,6 +66,7 @@ std::vector<TopKQueryResult> batch_linear_scan_tiled(
 
 // Backward compatibility in global namespace
 using secan::linear_scan;
+using secan::linear_scan_with_prefetch;
 using secan::batch_linear_scan_tiled;
 using secan::TopKQueryResult;
 

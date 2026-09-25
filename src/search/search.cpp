@@ -2,6 +2,7 @@
 #include "secan/search/distance.h"
 #include "secan/search/distance_avx2.h"
 #include <algorithm>
+#include <immintrin.h>
 #include <queue>
 #include <stdexcept>
 
@@ -114,6 +115,59 @@ std::vector<SearchResult> linear_scan(const FloatDataset &dataset,
                                       size_t top_k,
                                       const std::string &method) {
   return linear_scan(dataset, query, top_k, parse_metric(method));
+}
+
+std::vector<SearchResult> linear_scan_with_prefetch(
+    const FloatDataset &dataset,
+    const float *query,
+    size_t top_k,
+    MetricType metric,
+    size_t prefetch_ahead) {
+  if (dataset.empty() || query == nullptr || dataset.dim == 0) {
+    return {};
+  }
+
+  const size_t N = dataset.num_vectors;
+  const size_t dim = dataset.dim;
+  const size_t safe_top_k = std::min(top_k, N);
+  if (safe_top_k == 0) {
+    return {};
+  }
+
+  std::vector<SearchResult> results;
+  results.reserve(N);
+
+  const size_t bytes_per_vector = dim * sizeof(float);
+
+  for (size_t i = 0; i < N; ++i) {
+    // Software prefetch lookahead vectors into L1 cache
+    if (prefetch_ahead > 0 && i + prefetch_ahead < N) {
+      const char *prefetch_ptr = reinterpret_cast<const char *>(dataset.get(i + prefetch_ahead));
+      for (size_t line = 0; line < bytes_per_vector; line += 64) {
+        _mm_prefetch(prefetch_ptr + line, _MM_HINT_T0);
+      }
+    }
+
+    const float *row = dataset.get(i);
+    float dist = compute_distance(metric, row, query, dim);
+    results.push_back({static_cast<int>(i), dist});
+  }
+
+  std::partial_sort(results.begin(), results.begin() + safe_top_k, results.end(),
+                    [](const SearchResult &a, const SearchResult &b) {
+                      return a.distance < b.distance;
+                    });
+  results.resize(safe_top_k);
+  return results;
+}
+
+std::vector<SearchResult> linear_scan_with_prefetch(
+    const FloatDataset &dataset,
+    const float *query,
+    size_t top_k,
+    const std::string &method,
+    size_t prefetch_ahead) {
+  return linear_scan_with_prefetch(dataset, query, top_k, parse_metric(method), prefetch_ahead);
 }
 
 std::vector<TopKQueryResult> batch_linear_scan_tiled(
