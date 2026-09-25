@@ -269,10 +269,14 @@ MmapFloatDataset MmapFloatDataset::open(const std::string &path) {
     throw std::runtime_error("Failed to mmap file: " + path);
   }
 
-  // Advise kernel of sequential access pattern if desired
-  #ifdef POSIX_MADV_SEQUENTIAL
+#ifdef MADV_HUGEPAGE
+  ::madvise(addr, file_size, MADV_HUGEPAGE);
+#endif
+#ifdef MADV_SEQUENTIAL
+  ::madvise(addr, file_size, MADV_SEQUENTIAL | MADV_WILLNEED);
+#elif defined(POSIX_MADV_SEQUENTIAL)
   ::posix_madvise(addr, file_size, POSIX_MADV_SEQUENTIAL);
-  #endif
+#endif
 
   MmapFloatDataset ds;
   ds.mapped_data_ = addr;

@@ -15,10 +15,12 @@ add_library(secan_lib
   src/utils/utils.cpp
   src/utils/io.cpp
   src/utils/metrics.cpp
+  src/utils/normalize.cpp
   src/search/search.cpp
   src/search/distance.cpp
   src/search/distance_avx2.cpp
   src/search/distance_avx512.cpp
+  src/tree/kd_tree.cpp
 )
 target_include_directories(secan_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
