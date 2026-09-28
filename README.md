@@ -136,6 +136,20 @@ python3 scripts/sweep_memory_mountain.py
 | **$D = 1024$** | BGE-Large / Large Text Embeddings | $2310.0\text{ ns}$ | $723.0\text{ ns}$ | **$114.0\text{ ns}$** | **$20.3\times$** | $66.7\text{ GiB/s}$ |
 | **$D = 1536$** | OpenAI `text-embedding-3-small/large` | $3295.0\text{ ns}$ | $1082.0\text{ ns}$ | **$175.0\text{ ns}$** | **$18.8\times$** | $65.4\text{ GiB/s}$ |
 
+### SIFT-100K End-to-End Index Benchmarks ($D = 128$, $N = 100{,}000$, Float32)
+*Benchmarked on AMD Zen 4 Hawk Point (12-Core @ 4.30 GHz, L1D 32 KiB, L2 1 MiB, L3 16 MiB). Ground-truth Recall@10 evaluated against exact SIFT nearest neighbors.*
+
+| Index Architecture | Configuration / Parameter | Latency / Query | Throughput (QPS) | Recall@10 | Microarchitectural Mechanism |
+|:---|:---|:---:|:---:|:---:|:---|
+| **`Flat2DIndex` (Exact Oracle)** | Single-Query Exact Scan | $2.64\text{ ms}$ | **$378\text{ QPS}$** | **$100.0\%$** | AVX2 unroll-4 streaming, DRAM bandwidth-limited |
+| **`Flat2DIndex` (Exact Oracle)** | **Batch-Tiled ($B=64$, tile=512)** | **$0.83\text{ ms}$** | **$1{,}209\text{ QPS}$** | **$100.0\%$** | **$3.2\times$ GEMM Speedup** via L2 cache reuse |
+| **`RandomizedKdTree` (FLANN)** | `max_checks = 64` | $4.58\text{ }\mu\text{s}$ | $218{,}268\text{ QPS}$ | $7.3\%$ | Fast tree pruning, low high-D recall |
+| **`RandomizedKdTree` (FLANN)** | `max_checks = 512` | $52.5\text{ }\mu\text{s}$ | $19{,}048\text{ QPS}$ | $14.2\%$ | Best-Bin-First priority-queue traversal |
+| **`RandomizedKdTree` (FLANN)** | `max_checks = 2048` | $175.0\text{ }\mu\text{s}$ | $5{,}710\text{ QPS}$ | $16.7\%$ | Bounding-box overlap degradation in 128D |
+
+> **Why Keep FLANN / Randomized KD-Trees?**:
+> The KD-tree ensemble serves as a crucial metric-space baseline in `secan`. While spatial trees excel in low-dimensional regimes ($D \le 16$), their recall degenerates in $128\text{D}$ (capping out at $<17\%$). This empirically proves the high-dimensional *Curse of Dimensionality* and justifies the structural necessity of Voronoi quantization (IVF) and Small-World Graphs (HNSW).
+
 ## Roadmap
 
 - [x] Scalar Baseline Distance Kernels (L2, IP, Cosine, Fast Reciprocal Cosine)
@@ -145,9 +159,14 @@ python3 scripts/sweep_memory_mountain.py
 - [x] Fused 1-Pass AVX2 Cosine Distance Kernel (66% cache bus traffic reduction)
 - [x] AVX-512 Distance Kernels (512-bit ZMM dual-accumulator unrolling)
 - [x] Memory scaling sweeps & cache eviction cliffs characterization ($N \in [100, 10^6]$)
-- [ ] Cache-aware memory layout & blocked matrix scans
-- [ ] Multithreaded concurrent query engine
+- [x] Memory-mapped zero-copy `.fvecs` dataset ingestion with 2MB HugePages
+- [x] Classical metric-space baseline: Randomized KD-Tree ensemble (`RandomizedKdTree`)
+- [x] Flat 2D Index (`Flat2DIndex`) with cache-tiled batch scan (GEMV $\to$ GEMM $3.2\times$ throughput)
+- [x] Cache-aligned Inverted File memory layout (`alignas(64)` `InvertedList`)
+- [ ] IVF-Flat Index: $k$-means & spherical $k$-means centroid training and multi-probe query routing
+- [ ] Product Quantization (PQ) and Asymmetric Distance Computation (ADC)
 - [ ] HNSW graph indexing for sub-millisecond approximate nearest neighbor search
+
 
 
 

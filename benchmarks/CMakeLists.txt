@@ -8,3 +8,7 @@ target_link_libraries(bench_exact_scan PRIVATE secan_lib benchmark::benchmark)
 add_executable(bench_kd_tree bench_kd_tree.cpp)
 target_link_libraries(bench_kd_tree PRIVATE secan_lib benchmark::benchmark)
 
+add_executable(bench_index_sift bench_index_sift.cpp)
+target_link_libraries(bench_index_sift PRIVATE secan_lib benchmark::benchmark)
+
+
