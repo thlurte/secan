@@ -21,6 +21,7 @@ add_library(secan_lib
   src/search/distance_avx2.cpp
   src/search/distance_avx512.cpp
   src/tree/kd_tree.cpp
+  src/index/ivf_flat.cpp
 )
 target_include_directories(secan_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
