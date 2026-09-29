@@ -135,7 +135,8 @@ void test_linear_scan_metric_types() {
 void test_l2_squared_avx2_unroll4() {
   secan::enable_ftz_daz();
 
-  // Test across multiple dimensions (small tail only, full 32-chunk, 32-chunk + vector tail + scalar tail)
+  // Test across multiple dimensions (small tail only, full 32-chunk, 32-chunk +
+  // vector tail + scalar tail)
   for (size_t dim : {3, 8, 16, 32, 45, 64, 128, 768, 1536}) {
     std::vector<float> u(dim), v(dim);
     for (size_t i = 0; i < dim; ++i) {
@@ -242,5 +243,3 @@ int main() {
   test_ip_avx512();
   return report_results("distance_tests");
 }
-
-
