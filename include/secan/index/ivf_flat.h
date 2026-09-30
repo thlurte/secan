@@ -22,6 +22,15 @@ struct SearchResult {
   }
 };
 
+struct CentroidCandidate {
+  size_t id;
+  float distance;
+
+  bool operator<(const CentroidCandidate &other) const noexcept {
+    return distance < other.distance;
+  }
+};
+
 struct alignas(64) InvertedList {
   std::vector<int32_t> ids;
   std::vector<float> data;

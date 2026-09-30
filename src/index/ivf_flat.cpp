@@ -121,4 +121,119 @@ void IvfFlatIndex::train(size_t n, const float *data, size_t max_iters) {
 
   is_trained_ = true;
 }
+
+void IvfFlatIndex::add(size_t n, const int32_t *ids, const float *data) {
+  if (!is_trained_) {
+    throw std::invalid_argument("Index must be trained before adding vectors.");
+  }
+
+  for (size_t i = 0; i < n; ++i) {
+    const float *x = data + (i * dim_);
+    int32_t id = ids[i];
+
+    size_t best_k = 0;
+    float min_dist = std::numeric_limits<float>::max();
+
+    for (size_t k = 0; k < nlist_; ++k) {
+      const float *c = centroids_.data() + (k * dim_);
+
+      float dist = 0.0f;
+      if (metric_ == MetricType::L2) {
+        dist = l2_squared_scalar(x, c, dim_);
+      } else if (metric_ == MetricType::Cosine) {
+        dist = cosine_distance_fast_scalar(x, c, dim_);
+      }
+
+      if (dist < min_dist) {
+        min_dist = dist;
+        best_k = k;
+      }
+    }
+
+    lists_[best_k].add(id, x, dim_);
+  }
+}
+
+std::vector<SearchResult> IvfFlatIndex::search(const float *query, size_t k,
+                                               size_t nprobe) const {
+  // Make sure is_trained_ is true
+  if (!is_trained_) {
+    throw std::invalid_argument(
+        "The intex is not built, build before performing search.");
+  }
+  // Clamp nprobe since we cant probe more clusters than there are
+  nprobe = std::min(nprobe, nlist_);
+
+  std::vector<CentroidCandidate> centroid_dists(nlist_);
+
+  for (size_t c = 0; c < nlist_; ++c) {
+    const float *centroid_vec = centroids_.data() + c * dim_;
+
+    float dist = 0.0f;
+
+    if (metric_ == MetricType::L2) {
+      dist = l2_squared_scalar(query, centroid_vec, dim_);
+
+    } else if (metric_ == MetricType::Cosine) {
+      dist = cosine_distance_fast_scalar(query, centroid_vec, dim_);
+    }
+
+    centroid_dists[c] = {c, dist};
+  }
+
+  std::partial_sort(centroid_dists.begin(), centroid_dists.begin() + nprobe,
+                    centroid_dists.end());
+
+  std::priority_queue<SearchResult> heap;
+
+  for (size_t p = 0; p < nprobe; ++p) {
+    size_t cluster_id = centroid_dists[p].id;
+    const InvertedList &list = lists_[cluster_id];
+
+    // If this cluster is empty (no vectors added to it), skip it!
+    if (list.empty()) {
+      continue;
+    }
+
+    for (size_t i = 0; i < list.size(); ++i) {
+      int32_t vec_id = list.ids[i];
+      const float *vec_data = list.data.data() + (i * dim_);
+
+      float dist = 0.0f;
+
+      if (metric_ == MetricType::L2) {
+        dist = l2_squared_scalar(query, vec_data, dim_);
+      } else if (metric_ == MetricType::Cosine) {
+        dist = cosine_distance_fast_scalar(query, vec_data, dim_);
+      }
+
+      if (heap.size() < k) {
+        heap.push(SearchResult({vec_id, dist}));
+      } else if (dist < heap.top().distance) {
+        heap.pop();
+        heap.push(SearchResult{vec_id, dist});
+      }
+    }
+  }
+
+  const size_t num_results = heap.size();
+  std::vector<SearchResult> results(num_results);
+  for (int i = static_cast<int>(num_results) - 1; i >= 0; --i) {
+    results[i] = heap.top();
+    heap.pop();
+  }
+  return results;
+}
+
+std::vector<std::vector<SearchResult>>
+IvfFlatIndex::batch_search(size_t n_queries, const float *queries, size_t k,
+                           size_t nprobe) const {
+  std::vector<std::vector<SearchResult>> batch_results(n_queries);
+  for (size_t q = 0; q < n_queries; ++q) {
+    const float *query = queries + (q * dim_);
+    batch_results[q] = search(query, k, nprobe);
+  }
+  return batch_results;
+}
+
 } // namespace secan
