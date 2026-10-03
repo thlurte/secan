@@ -146,6 +146,10 @@ python3 scripts/sweep_memory_mountain.py
 | **`RandomizedKdTree` (FLANN)** | `max_checks = 64` | $4.58\text{ }\mu\text{s}$ | $218{,}268\text{ QPS}$ | $7.3\%$ | Fast tree pruning, low high-D recall |
 | **`RandomizedKdTree` (FLANN)** | `max_checks = 512` | $52.5\text{ }\mu\text{s}$ | $19{,}048\text{ QPS}$ | $14.2\%$ | Best-Bin-First priority-queue traversal |
 | **`RandomizedKdTree` (FLANN)** | `max_checks = 2048` | $175.0\text{ }\mu\text{s}$ | $5{,}710\text{ QPS}$ | $16.7\%$ | Bounding-box overlap degradation in 128D |
+| **`IvfFlatIndex` (AVX2)** | `nlist = 256, nprobe = 1` | **$8.76\text{ }\mu\text{s}$** | **$114{,}673\text{ QPS}$** | $10.9\%$ | Coarse routing + single posting list scan |
+| **`IvfFlatIndex` (AVX2)** | `nlist = 256, nprobe = 4` | $39.2\text{ }\mu\text{s}$ | $25{,}812\text{ QPS}$ | $17.3\%$ | Multi-probe Voronoi cell expansion |
+| **`IvfFlatIndex` (AVX2)** | `nlist = 256, nprobe = 8` | $71.0\text{ }\mu\text{s}$ | $14{,}184\text{ QPS}$ | $18.4\%$ | Bounded max-heap Top-10 pruning |
+| **`IvfFlatIndex` (AVX2)** | `nlist = 256, nprobe = 16` | $139.0\text{ }\mu\text{s}$ | $7{,}265\text{ QPS}$ | $18.8\%$ | Top-$P$ candidate gathering in L1/L2 cache |
 
 > **Why Keep FLANN / Randomized KD-Trees?**:
 > The KD-tree ensemble serves as a crucial metric-space baseline in `secan`. While spatial trees excel in low-dimensional regimes ($D \le 16$), their recall degenerates in $128\text{D}$ (capping out at $<17\%$). This empirically proves the high-dimensional *Curse of Dimensionality* and justifies the structural necessity of Voronoi quantization (IVF) and Small-World Graphs (HNSW).

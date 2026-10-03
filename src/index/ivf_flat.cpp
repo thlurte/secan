@@ -1,5 +1,6 @@
 #include "secan/index/ivf_flat.h"
 #include "secan/search/distance.h"
+#include "secan/search/distance_avx2.h"
 #include "secan/utils/utils.h"
 #include <algorithm>
 #include <cstring>
@@ -190,9 +191,9 @@ void IvfFlatIndex::add(size_t n, const int32_t *ids, const float *data) {
 
       float dist = 0.0f;
       if (metric_ == MetricType::L2) {
-        dist = l2_squared_scalar(x, c, dim_);
+        dist = l2_squared_avx2_unroll4(x, c, dim_);
       } else if (metric_ == MetricType::Cosine) {
-        dist = cosine_distance_fast_scalar(x, c, dim_);
+        dist = cosine_distance_avx2(x, c, dim_);
       }
 
       if (dist < min_dist) {
@@ -223,10 +224,10 @@ std::vector<SearchResult> IvfFlatIndex::search(const float *query, size_t k,
     float dist = 0.0f;
 
     if (metric_ == MetricType::L2) {
-      dist = l2_squared_scalar(query, centroid_vec, dim_);
+      dist = l2_squared_avx2_unroll4(query, centroid_vec, dim_);
 
     } else if (metric_ == MetricType::Cosine) {
-      dist = cosine_distance_fast_scalar(query, centroid_vec, dim_);
+      dist = cosine_distance_avx2(query, centroid_vec, dim_);
     }
 
     centroid_dists[c] = {c, dist};
@@ -253,9 +254,9 @@ std::vector<SearchResult> IvfFlatIndex::search(const float *query, size_t k,
       float dist = 0.0f;
 
       if (metric_ == MetricType::L2) {
-        dist = l2_squared_scalar(query, vec_data, dim_);
+        dist = l2_squared_avx2_unroll4(query, vec_data, dim_);
       } else if (metric_ == MetricType::Cosine) {
-        dist = cosine_distance_fast_scalar(query, vec_data, dim_);
+        dist = cosine_distance_avx2(query, vec_data, dim_);
       }
 
       if (heap.size() < k) {
