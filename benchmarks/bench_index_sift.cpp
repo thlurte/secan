@@ -43,11 +43,24 @@ struct SiftBenchmarkEnvironment {
 
     base = secan::load_fvecs(base_path);
     queries = secan::load_fvecs(query_path);
-    ground_truth = secan::load_ivecs(gt_path);
 
-    // Build Flat2DIndex
+    // Build Flat2DIndex (Exact Oracle)
     flat_index = std::make_unique<secan::Flat2DIndex>(base.dim, secan::MetricType::L2);
     flat_index->add(base);
+
+    // Precompute exact groundtruth against the active 100K dataset for accurate Recall evaluation
+    const size_t num_eval_queries = std::min<size_t>(100, queries.num_vectors);
+    const size_t k = 10;
+    ground_truth.dim = k;
+    ground_truth.num_vectors = num_eval_queries;
+    ground_truth.data.resize(num_eval_queries * k);
+
+    for (size_t q = 0; q < num_eval_queries; ++q) {
+      auto exact_hits = flat_index->search(queries.get(q), k);
+      for (size_t rank = 0; rank < k; ++rank) {
+        ground_truth.data[q * k + rank] = exact_hits[rank].index;
+      }
+    }
 
     // Build RandomizedKdTree
     secan::KdTreeParams kd_params;
