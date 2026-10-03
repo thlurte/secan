@@ -150,6 +150,43 @@ python3 scripts/sweep_memory_mountain.py
 > **Why Keep FLANN / Randomized KD-Trees?**:
 > The KD-tree ensemble serves as a crucial metric-space baseline in `secan`. While spatial trees excel in low-dimensional regimes ($D \le 16$), their recall degenerates in $128\text{D}$ (capping out at $<17\%$). This empirically proves the high-dimensional *Curse of Dimensionality* and justifies the structural necessity of Voronoi quantization (IVF) and Small-World Graphs (HNSW).
 
+### Inverted File Index (`IvfFlatIndex`)
+
+`IvfFlatIndex` partitions high-dimensional vector spaces into $K$ Voronoi cells using Lloyd $k$-means (or Spherical $k$-means for Cosine/IP), achieving $O(K \log P)$ multi-probe query routing and zero-allocation bounded max-heap Top-$k$ filtering.
+
+```cpp
+#include <iostream>
+#include <vector>
+#include "secan/index/ivf_flat.h"
+
+int main() {
+    const size_t dim = 128;
+    const size_t nlist = 64;   // 64 Voronoi clusters
+    const size_t n_vecs = 10000;
+
+    secan::IvfFlatIndex index(dim, nlist, secan::MetricType::L2);
+
+    // 1. Train cluster centroids
+    std::vector<float> train_data = /* ... 10,000 vectors ... */;
+    index.train(n_vecs, train_data.data(), 15);
+
+    // 2. Ingest vectors with IDs
+    std::vector<int32_t> ids(n_vecs);
+    for (size_t i = 0; i < n_vecs; ++i) ids[i] = static_cast<int32_t>(i);
+    index.add(n_vecs, ids.data(), train_data.data());
+
+    // 3. Multi-probe search (nprobe = 8 closest clusters, top k = 10)
+    std::vector<float> query = /* ... 128D query vector ... */;
+    std::vector<secan::SearchResult> hits = index.search(query.data(), 10, 8);
+
+    for (const auto &hit : hits) {
+        std::cout << "ID: " << hit.id << ", Distance: " << hit.distance << "\n";
+    }
+
+    return 0;
+}
+```
+
 ## Roadmap
 
 - [x] Scalar Baseline Distance Kernels (L2, IP, Cosine, Fast Reciprocal Cosine)
@@ -163,7 +200,8 @@ python3 scripts/sweep_memory_mountain.py
 - [x] Classical metric-space baseline: Randomized KD-Tree ensemble (`RandomizedKdTree`)
 - [x] Flat 2D Index (`Flat2DIndex`) with cache-tiled batch scan (GEMV $\to$ GEMM $3.2\times$ throughput)
 - [x] Cache-aligned Inverted File memory layout (`alignas(64)` `InvertedList`)
-- [ ] IVF-Flat Index: $k$-means & spherical $k$-means centroid training and multi-probe query routing
+- [x] IVF-Flat Index: $k$-means & spherical $k$-means centroid training and multi-probe query routing (`IvfFlatIndex`)
+- [x] Inverted list distribution diagnostics (`InvertedListStats` skew analysis)
 - [ ] Product Quantization (PQ) and Asymmetric Distance Computation (ADC)
 - [ ] HNSW graph indexing for sub-millisecond approximate nearest neighbor search
 
