@@ -73,12 +73,85 @@ void test_ivf_flat_index_init() {
   CHECK(index.get_centroids() != nullptr);
 }
 
+// Test 4: End-to-End Train, Add & Search Verification
+void test_ivf_flat_train_add_search() {
+  std::cout << "\n--- Testing IvfFlatIndex Train, Add & Multi-Probe Search ---" << std::endl;
+
+  const size_t dim = 4;
+  const size_t nlist = 2;
+  const size_t n_vecs = 6;
+
+  secan::IvfFlatIndex index(dim, nlist, secan::MetricType::L2);
+
+  std::vector<float> data = {
+      0.1f, 0.0f, 0.1f, 0.0f,    // ID 0
+      0.2f, 0.1f, 0.0f, 0.1f,    // ID 1
+      0.0f, 0.1f, 0.2f, 0.0f,    // ID 2
+      10.0f, 10.1f, 10.0f, 9.9f, // ID 3
+      10.2f, 10.0f, 10.1f, 10.0f,// ID 4
+      9.9f, 10.0f, 10.2f, 10.1f  // ID 5
+  };
+  std::vector<int32_t> ids = {0, 1, 2, 3, 4, 5};
+
+  index.train(n_vecs, data.data(), 10);
+  CHECK(index.is_trained());
+
+  index.add(n_vecs, ids.data(), data.data());
+  CHECK(index.total_vectors() == n_vecs);
+
+  // Search for query close to cluster 1
+  float query[] = {0.1f, 0.05f, 0.1f, 0.0f};
+  auto results = index.search(query, 3, 2);
+
+  CHECK(results.size() == 3);
+  CHECK(results[0].id == 0);
+  CHECK(results[0].distance <= results[1].distance);
+
+  // Batch search verification
+  std::vector<float> queries = {
+      0.1f, 0.05f, 0.1f, 0.0f,
+      10.0f, 10.0f, 10.0f, 10.0f
+  };
+  auto batch_res = index.batch_search(2, queries.data(), 2, 2);
+  CHECK(batch_res.size() == 2);
+  CHECK(batch_res[0].size() == 2);
+  CHECK(batch_res[0][0].id == 0);
+  CHECK(batch_res[1][0].id >= 3);
+}
+
+// Test 5: Inverted List Statistics & Skew Diagnostics
+void test_ivf_flat_stats() {
+  std::cout << "\n--- Testing IvfFlatIndex List Distribution Diagnostics ---" << std::endl;
+
+  const size_t dim = 4;
+  const size_t nlist = 4;
+  secan::IvfFlatIndex index(dim, nlist, secan::MetricType::L2);
+
+  std::vector<float> data = {
+      0.0f, 0.0f, 0.0f, 0.0f,
+      0.1f, 0.1f, 0.1f, 0.1f,
+      5.0f, 5.0f, 5.0f, 5.0f,
+      5.1f, 5.1f, 5.1f, 5.1f
+  };
+  std::vector<int32_t> ids = {0, 1, 2, 3};
+
+  index.train(4, data.data(), 5);
+  index.add(4, ids.data(), data.data());
+
+  auto stats = index.get_list_stats();
+  CHECK(stats.total_vectors == 4);
+  CHECK(stats.mean_list_size == 1.0);
+  CHECK(stats.max_list_size >= 1);
+}
+
 int main() {
   print_clock_overhead();
 
   test_inverted_list_alignment();
   test_inverted_list_operations();
   test_ivf_flat_index_init();
+  test_ivf_flat_train_add_search();
+  test_ivf_flat_stats();
 
   std::cout << "\n========================================\n";
   std::cout << "Tests run: " << g_tests_run << "\n";

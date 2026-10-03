@@ -45,6 +45,16 @@ struct alignas(64) InvertedList {
   void clear() noexcept;
 };
 
+struct InvertedListStats {
+  size_t total_vectors{0};
+  size_t min_list_size{0};
+  size_t max_list_size{0};
+  double mean_list_size{0.0};
+  double median_list_size{0.0};
+  double stddev_list_size{0.0};
+  size_t empty_lists{0};
+};
+
 class IvfFlatIndex {
 public:
   IvfFlatIndex(size_t dim, size_t nlist, MetricType metric = MetricType::L2);
@@ -62,6 +72,7 @@ public:
                size_t nprobe = 1) const;
 
   // Diagnostics & Metadata
+  [[nodiscard]] InvertedListStats get_list_stats() const;
   [[nodiscard]] size_t get_dim() const noexcept { return dim_; }
   [[nodiscard]] size_t get_nlist() const noexcept { return nlist_; }
   [[nodiscard]] size_t total_vectors() const noexcept;

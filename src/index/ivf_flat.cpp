@@ -36,6 +36,57 @@ size_t IvfFlatIndex::total_vectors() const noexcept {
   return total;
 }
 
+InvertedListStats IvfFlatIndex::get_list_stats() const {
+  InvertedListStats stats{};
+  if (lists_.empty()) {
+    return stats;
+  }
+
+  std::vector<size_t> sizes;
+  sizes.reserve(lists_.size());
+
+  size_t sum = 0;
+  stats.min_list_size = std::numeric_limits<size_t>::max();
+  stats.max_list_size = 0;
+
+  for (const auto &list : lists_) {
+    size_t sz = list.size();
+    sizes.push_back(sz);
+    sum += sz;
+    if (sz == 0) {
+      stats.empty_lists++;
+    }
+    if (sz < stats.min_list_size) {
+      stats.min_list_size = sz;
+    }
+    if (sz > stats.max_list_size) {
+      stats.max_list_size = sz;
+    }
+  }
+
+  stats.total_vectors = sum;
+  stats.mean_list_size = static_cast<double>(sum) / static_cast<double>(lists_.size());
+
+  // Median calculation
+  std::sort(sizes.begin(), sizes.end());
+  size_t mid = sizes.size() / 2;
+  if (sizes.size() % 2 == 0) {
+    stats.median_list_size = static_cast<double>(sizes[mid - 1] + sizes[mid]) / 2.0;
+  } else {
+    stats.median_list_size = static_cast<double>(sizes[mid]);
+  }
+
+  // Standard deviation
+  double variance_sum = 0.0;
+  for (size_t sz : sizes) {
+    double diff = static_cast<double>(sz) - stats.mean_list_size;
+    variance_sum += diff * diff;
+  }
+  stats.stddev_list_size = std::sqrt(variance_sum / static_cast<double>(lists_.size()));
+
+  return stats;
+}
+
 void IvfFlatIndex::train(size_t n, const float *data, size_t max_iters) {
   if (n < nlist_) {
     throw std::invalid_argument("Training data size must be >= nlist");
