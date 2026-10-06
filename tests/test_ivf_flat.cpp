@@ -251,6 +251,37 @@ void test_ivf_flat_stats() {
   CHECK(stats.max_list_size >= 1);
 }
 
+void test_ivf_flat_empty_cluster_reseeding() {
+  std::cout << "\n--- Testing Empty Cluster Worst-Distance Reseeding ---" << std::endl;
+
+  const size_t dim = 2;
+  const size_t nlist = 4;
+  const size_t n_vecs = 40;
+
+  // 4 well-separated tight clusters in 2D
+  std::vector<float> data(n_vecs * dim);
+  std::vector<int32_t> ids(n_vecs);
+
+  for (size_t i = 0; i < n_vecs; ++i) {
+    ids[i] = static_cast<int32_t>(i);
+    float base_x = (i < 10) ? -100.0f : (i < 20) ? -50.0f : (i < 30) ? 50.0f : 100.0f;
+    float base_y = (i < 10) ? -100.0f : (i < 20) ? -50.0f : (i < 30) ? 50.0f : 100.0f;
+    data[i * dim + 0] = base_x + static_cast<float>(i % 3) * 0.1f;
+    data[i * dim + 1] = base_y + static_cast<float>(i % 3) * 0.1f;
+  }
+
+  secan::IvfFlatIndex index(dim, nlist, secan::MetricType::L2);
+  index.train(n_vecs, data.data(), 15);
+  index.add(n_vecs, ids.data(), data.data());
+
+  auto stats = index.get_list_stats();
+  CHECK(stats.empty_lists == 0);
+  CHECK(stats.total_vectors == n_vecs);
+  CHECK(stats.min_list_size > 0);
+  CHECK(stats.max_list_size <= 20);
+  CHECK((static_cast<double>(stats.max_list_size) / stats.median_list_size) <= 2.0);
+}
+
 int main() {
   test_inverted_list_alignment();
   test_inverted_list_operations();
@@ -260,5 +291,7 @@ int main() {
   test_ivf_flat_oracle_parity_l2_and_ip();
   test_ivf_flat_spherical_kmeans_exact_norm();
   test_ivf_flat_stats();
+  test_ivf_flat_empty_cluster_reseeding();
   return report_results("ivf_flat_tests");
 }
+
