@@ -128,9 +128,9 @@ void IvfFlatIndex::train(size_t n, const float *data, size_t max_iters) {
 
         float dist = 0.0f;
         if (metric_ == MetricType::L2) {
-          dist = l2_squared_scalar(x, c, dim_);
+          dist = l2_squared_avx2_unroll4(x, c, dim_);
         } else if (metric_ == MetricType::Cosine) {
-          dist = cosine_distance_fast_scalar(x, c, dim_);
+          dist = cosine_distance_avx2(x, c, dim_);
         }
 
         if (dist < min_dist) {
