@@ -24,6 +24,7 @@ add_library(secan_lib
   src/index/flat.cpp
   src/index/ivf_flat.cpp
   src/quantization/scalar_quantizer.cpp
+  src/quantization/distance_sq8.cpp
 )
 target_include_directories(secan_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
