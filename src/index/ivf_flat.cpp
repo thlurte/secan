@@ -87,14 +87,10 @@ InvertedListStats IvfFlatIndex::get_list_stats() const {
   stats.total_vectors = sum;
   stats.mean_list_size = static_cast<double>(sum) / static_cast<double>(lists_.size());
 
-  // Median calculation
+  // Median calculation: upper-middle length when count is even
   std::sort(sizes.begin(), sizes.end());
   size_t mid = sizes.size() / 2;
-  if (sizes.size() % 2 == 0) {
-    stats.median_list_size = static_cast<double>(sizes[mid - 1] + sizes[mid]) / 2.0;
-  } else {
-    stats.median_list_size = static_cast<double>(sizes[mid]);
-  }
+  stats.median_list_size = static_cast<double>(sizes[mid]);
 
   // Standard deviation
   double variance_sum = 0.0;
@@ -139,6 +135,8 @@ void IvfFlatIndex::train(size_t n, const float *data, size_t max_iters) {
     }
   }
 
+  std::vector<float> assigned_distances(n, 0.0f);
+
   for (size_t iter = 0; iter < max_iters; ++iter) {
     std::vector<float> accumulators(nlist_ * dim_, 0.0f);
     std::vector<size_t> counts(nlist_, 0);
@@ -160,13 +158,15 @@ void IvfFlatIndex::train(size_t n, const float *data, size_t max_iters) {
         }
       }
 
+      assigned_distances[i] = min_dist;
+
       for (size_t d = 0; d < dim_; ++d) {
         accumulators[(best_k * dim_) + d] += x[d];
       }
       counts[best_k]++;
     }
 
-    // Centroid update
+    // Centroid update for non-empty clusters
     for (size_t k = 0; k < nlist_; ++k) {
       if (counts[k] > 0) {
         float norm_sq = 0.0f;
@@ -181,6 +181,45 @@ void IvfFlatIndex::train(size_t n, const float *data, size_t max_iters) {
           float inv_norm = 1.0f / std::sqrt(norm_sq);
           for (size_t d = 0; d < dim_; ++d) {
             centroids_[(k * dim_) + d] *= inv_norm;
+          }
+        }
+      }
+    }
+
+    // Re-seed empty clusters from training vectors with worst assignment distances
+    std::vector<size_t> empty_clusters;
+    for (size_t k = 0; k < nlist_; ++k) {
+      if (counts[k] == 0) {
+        empty_clusters.push_back(k);
+      }
+    }
+
+    if (!empty_clusters.empty()) {
+      std::vector<size_t> worst_indices(n);
+      std::iota(worst_indices.begin(), worst_indices.end(), 0);
+      std::partial_sort(worst_indices.begin(),
+                        worst_indices.begin() + std::min(empty_clusters.size(), n),
+                        worst_indices.end(),
+                        [&](size_t a, size_t b) {
+                          return assigned_distances[a] > assigned_distances[b];
+                        });
+
+      for (size_t idx = 0; idx < empty_clusters.size(); ++idx) {
+        size_t k = empty_clusters[idx];
+        size_t vec_idx = worst_indices[idx % n];
+        std::memcpy(centroids_.data() + (k * dim_), data + (vec_idx * dim_), dim_ * sizeof(float));
+
+        if ((metric_ == MetricType::Cosine || metric_ == MetricType::IP)) {
+          float norm_sq = 0.0f;
+          for (size_t d = 0; d < dim_; ++d) {
+            float val = centroids_[(k * dim_) + d];
+            norm_sq += val * val;
+          }
+          if (norm_sq > 1e-12f) {
+            float inv_norm = 1.0f / std::sqrt(norm_sq);
+            for (size_t d = 0; d < dim_; ++d) {
+              centroids_[(k * dim_) + d] *= inv_norm;
+            }
           }
         }
       }
