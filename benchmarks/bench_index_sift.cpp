@@ -16,10 +16,13 @@ namespace {
 struct SiftBenchmarkEnvironment {
   secan::FloatDataset base;
   secan::FloatDataset queries;
-  secan::IntDataset ground_truth;
-  std::unique_ptr<secan::Flat2DIndex> flat_index;
+  secan::IntDataset ground_truth_l2;
+  secan::IntDataset ground_truth_ip;
+  std::unique_ptr<secan::Flat2DIndex> flat_index_l2;
+  std::unique_ptr<secan::Flat2DIndex> flat_index_ip;
   std::unique_ptr<secan::RandomizedKdTree> kd_tree;
-  std::unique_ptr<secan::IvfFlatIndex> ivf_index;
+  std::unique_ptr<secan::IvfFlatIndex> ivf_index_l2;
+  std::unique_ptr<secan::IvfFlatIndex> ivf_index_ip;
   bool is_loaded{false};
 
   void load() {
@@ -44,21 +47,32 @@ struct SiftBenchmarkEnvironment {
     base = secan::load_fvecs(base_path);
     queries = secan::load_fvecs(query_path);
 
-    // Build Flat2DIndex (Exact Oracle)
-    flat_index = std::make_unique<secan::Flat2DIndex>(base.dim, secan::MetricType::L2);
-    flat_index->add(base);
+    // Build Flat2DIndex L2
+    flat_index_l2 = std::make_unique<secan::Flat2DIndex>(base.dim, secan::MetricType::L2);
+    flat_index_l2->add(base);
 
-    // Precompute exact groundtruth against the active 100K dataset for accurate Recall evaluation
+    // Build Flat2DIndex IP
+    flat_index_ip = std::make_unique<secan::Flat2DIndex>(base.dim, secan::MetricType::IP);
+    flat_index_ip->add(base);
+
+    // Precompute exact groundtruth against the active 100K dataset for L2 and IP Recall
     const size_t num_eval_queries = std::min<size_t>(100, queries.num_vectors);
     const size_t k = 10;
-    ground_truth.dim = k;
-    ground_truth.num_vectors = num_eval_queries;
-    ground_truth.data.resize(num_eval_queries * k);
+
+    ground_truth_l2.dim = k;
+    ground_truth_l2.num_vectors = num_eval_queries;
+    ground_truth_l2.data.resize(num_eval_queries * k);
+
+    ground_truth_ip.dim = k;
+    ground_truth_ip.num_vectors = num_eval_queries;
+    ground_truth_ip.data.resize(num_eval_queries * k);
 
     for (size_t q = 0; q < num_eval_queries; ++q) {
-      auto exact_hits = flat_index->search(queries.get(q), k);
+      auto exact_l2 = flat_index_l2->search(queries.get(q), k);
+      auto exact_ip = flat_index_ip->search(queries.get(q), k);
       for (size_t rank = 0; rank < k; ++rank) {
-        ground_truth.data[q * k + rank] = exact_hits[rank].index;
+        ground_truth_l2.data[q * k + rank] = exact_l2[rank].index;
+        ground_truth_ip.data[q * k + rank] = exact_ip[rank].index;
       }
     }
 
@@ -73,14 +87,18 @@ struct SiftBenchmarkEnvironment {
 
     // Build IvfFlatIndex (nlist = 256 for 100K vectors)
     const size_t nlist = 256;
-    ivf_index = std::make_unique<secan::IvfFlatIndex>(base.dim, nlist, secan::MetricType::L2);
-    ivf_index->train(base.num_vectors, base.data.data(), 15);
+    ivf_index_l2 = std::make_unique<secan::IvfFlatIndex>(base.dim, nlist, secan::MetricType::L2);
+    ivf_index_l2->train(base.num_vectors, base.data.data(), 15);
+
+    ivf_index_ip = std::make_unique<secan::IvfFlatIndex>(base.dim, nlist, secan::MetricType::IP);
+    ivf_index_ip->train(base.num_vectors, base.data.data(), 15);
 
     std::vector<int32_t> ids(base.num_vectors);
     for (size_t i = 0; i < base.num_vectors; ++i) {
       ids[i] = static_cast<int32_t>(i);
     }
-    ivf_index->add(base.num_vectors, ids.data(), base.data.data());
+    ivf_index_l2->add(base.num_vectors, ids.data(), base.data.data());
+    ivf_index_ip->add(base.num_vectors, ids.data(), base.data.data());
 
     is_loaded = true;
   }
@@ -91,9 +109,8 @@ SiftBenchmarkEnvironment g_sift_env;
 } // anonymous namespace
 
 // ----------------------------------------------------------------------------
-// 1. Flat2DIndex Exact Search Benchmark (Single Query & Batch Tiled)
+// 1. Flat2DIndex Exact Search Benchmark
 // ----------------------------------------------------------------------------
-
 static void BM_SIFT100K_Flat2D_SingleQuery(benchmark::State &state) {
   g_sift_env.load();
   if (!g_sift_env.is_loaded) {
@@ -108,7 +125,7 @@ static void BM_SIFT100K_Flat2D_SingleQuery(benchmark::State &state) {
   size_t q_idx = 0;
   for (auto _ : state) {
     const float *query = g_sift_env.queries.get(q_idx % num_queries);
-    auto results = g_sift_env.flat_index->search(query, k);
+    auto results = g_sift_env.flat_index_l2->search(query, k);
     benchmark::DoNotOptimize(results);
     q_idx++;
   }
@@ -130,7 +147,7 @@ static void BM_SIFT100K_Flat2D_BatchTiled(benchmark::State &state) {
   const float *query_batch = g_sift_env.queries.get(0);
 
   for (auto _ : state) {
-    auto results = g_sift_env.flat_index->batch_search(num_queries, query_batch, k, tile_size);
+    auto results = g_sift_env.flat_index_l2->batch_search(num_queries, query_batch, k, tile_size);
     benchmark::DoNotOptimize(results);
   }
 
@@ -138,9 +155,8 @@ static void BM_SIFT100K_Flat2D_BatchTiled(benchmark::State &state) {
 }
 
 // ----------------------------------------------------------------------------
-// 2. RandomizedKdTree Search Benchmark with Recall@10 Measurement
+// 2. RandomizedKdTree Search Benchmark
 // ----------------------------------------------------------------------------
-
 static void BM_SIFT100K_KdTree_Search(benchmark::State &state) {
   g_sift_env.load();
   if (!g_sift_env.is_loaded) {
@@ -167,7 +183,6 @@ static void BM_SIFT100K_KdTree_Search(benchmark::State &state) {
 
   state.SetItemsProcessed(state.iterations());
 
-  // Compute and record Recall@10 as a benchmark user counter
   std::vector<std::vector<int32_t>> retrieved(num_queries);
   std::vector<std::vector<int32_t>> gt(num_queries);
 
@@ -179,7 +194,7 @@ static void BM_SIFT100K_KdTree_Search(benchmark::State &state) {
       retrieved[q].push_back(r.id);
     }
 
-    const int32_t *gt_ptr = g_sift_env.ground_truth.get(q);
+    const int32_t *gt_ptr = g_sift_env.ground_truth_l2.get(q);
     gt[q].assign(gt_ptr, gt_ptr + k);
   }
 
@@ -188,10 +203,9 @@ static void BM_SIFT100K_KdTree_Search(benchmark::State &state) {
 }
 
 // ----------------------------------------------------------------------------
-// 3. IvfFlatIndex Multi-Probe Search Benchmark with Recall@10 Sweep
+// 3. IvfFlatIndex L2 Multi-Probe Search Benchmark
 // ----------------------------------------------------------------------------
-
-static void BM_SIFT100K_IvfFlat_Search(benchmark::State &state) {
+static void BM_SIFT100K_IvfFlat_L2_Search(benchmark::State &state) {
   g_sift_env.load();
   if (!g_sift_env.is_loaded) {
     state.SkipWithError("SIFT dataset missing");
@@ -206,26 +220,69 @@ static void BM_SIFT100K_IvfFlat_Search(benchmark::State &state) {
   size_t q_idx = 0;
   for (auto _ : state) {
     const float *query = g_sift_env.queries.get(q_idx % num_queries);
-    auto results = g_sift_env.ivf_index->search(query, k, nprobe);
+    auto results = g_sift_env.ivf_index_l2->search(query, k, nprobe);
     benchmark::DoNotOptimize(results);
     q_idx++;
   }
 
   state.SetItemsProcessed(state.iterations());
 
-  // Compute and record Recall@10 as a benchmark user counter
   std::vector<std::vector<int32_t>> retrieved(num_queries);
   std::vector<std::vector<int32_t>> gt(num_queries);
 
   for (size_t q = 0; q < num_queries; ++q) {
     const float *query = g_sift_env.queries.get(q);
-    auto res = g_sift_env.ivf_index->search(query, k, nprobe);
+    auto res = g_sift_env.ivf_index_l2->search(query, k, nprobe);
     retrieved[q].reserve(res.size());
     for (const auto &r : res) {
       retrieved[q].push_back(r.id);
     }
 
-    const int32_t *gt_ptr = g_sift_env.ground_truth.get(q);
+    const int32_t *gt_ptr = g_sift_env.ground_truth_l2.get(q);
+    gt[q].assign(gt_ptr, gt_ptr + k);
+  }
+
+  double mean_recall = secan::mean_recall_at_k(retrieved, gt, k);
+  state.counters["Recall@10"] = benchmark::Counter(mean_recall, benchmark::Counter::kAvgThreads);
+}
+
+// ----------------------------------------------------------------------------
+// 4. IvfFlatIndex IP Multi-Probe Search Benchmark
+// ----------------------------------------------------------------------------
+static void BM_SIFT100K_IvfFlat_IP_Search(benchmark::State &state) {
+  g_sift_env.load();
+  if (!g_sift_env.is_loaded) {
+    state.SkipWithError("SIFT dataset missing");
+    return;
+  }
+  secan::enable_ftz_daz();
+
+  const size_t k = 10;
+  const size_t nprobe = state.range(0);
+  const size_t num_queries = std::min<size_t>(100, g_sift_env.queries.num_vectors);
+
+  size_t q_idx = 0;
+  for (auto _ : state) {
+    const float *query = g_sift_env.queries.get(q_idx % num_queries);
+    auto results = g_sift_env.ivf_index_ip->search(query, k, nprobe);
+    benchmark::DoNotOptimize(results);
+    q_idx++;
+  }
+
+  state.SetItemsProcessed(state.iterations());
+
+  std::vector<std::vector<int32_t>> retrieved(num_queries);
+  std::vector<std::vector<int32_t>> gt(num_queries);
+
+  for (size_t q = 0; q < num_queries; ++q) {
+    const float *query = g_sift_env.queries.get(q);
+    auto res = g_sift_env.ivf_index_ip->search(query, k, nprobe);
+    retrieved[q].reserve(res.size());
+    for (const auto &r : res) {
+      retrieved[q].push_back(r.id);
+    }
+
+    const int32_t *gt_ptr = g_sift_env.ground_truth_ip.get(q);
     gt[q].assign(gt_ptr, gt_ptr + k);
   }
 
@@ -236,11 +293,10 @@ static void BM_SIFT100K_IvfFlat_Search(benchmark::State &state) {
 // ----------------------------------------------------------------------------
 // Benchmark Registrations
 // ----------------------------------------------------------------------------
-
 BENCHMARK(BM_SIFT100K_Flat2D_SingleQuery)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_SIFT100K_Flat2D_BatchTiled)->Arg(512)->Arg(1024)->Arg(2048)->Arg(4096)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_SIFT100K_KdTree_Search)->Arg(64)->Arg(128)->Arg(256)->Arg(512)->Arg(1024)->Arg(2048)->Unit(benchmark::kMicrosecond);
-BENCHMARK(BM_SIFT100K_IvfFlat_Search)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32)->Arg(64)->Unit(benchmark::kMicrosecond);
+BENCHMARK(BM_SIFT100K_IvfFlat_L2_Search)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32)->Arg(64)->Unit(benchmark::kMicrosecond);
+BENCHMARK(BM_SIFT100K_IvfFlat_IP_Search)->Arg(1)->Arg(2)->Arg(4)->Arg(8)->Arg(16)->Arg(32)->Arg(64)->Unit(benchmark::kMicrosecond);
 
 BENCHMARK_MAIN();
-
