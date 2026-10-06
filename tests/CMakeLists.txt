@@ -30,6 +30,10 @@ add_executable(test_flat test_flat.cpp)
 target_link_libraries(test_flat PRIVATE secan_lib)
 target_include_directories(test_flat PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
+add_executable(test_scalar_quantizer test_scalar_quantizer.cpp)
+target_link_libraries(test_scalar_quantizer PRIVATE secan_lib)
+target_include_directories(test_scalar_quantizer PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
 enable_testing()
 add_test(NAME distance_tests COMMAND test_distance)
 add_test(NAME linear_scan_tests COMMAND test_linear_scan)
@@ -39,4 +43,6 @@ add_test(NAME normalize_tests COMMAND test_normalize)
 add_test(NAME kd_tree_tests COMMAND test_kd_tree)
 add_test(NAME flat_tests COMMAND test_flat)
 add_test(NAME ivf_flat_tests COMMAND test_ivf_flat)
+add_test(NAME scalar_quantizer_tests COMMAND test_scalar_quantizer)
+
 
