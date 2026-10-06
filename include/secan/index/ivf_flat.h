@@ -2,6 +2,7 @@
 #define SECAN_INDEX_IVF_FLAT_H
 
 #include "secan/search/distance.h"
+#include "secan/utils/aligned_allocator.h"
 #include "secan/utils/utils.h"
 #include <cstddef>
 #include <cstdint>
@@ -33,7 +34,8 @@ struct CentroidCandidate {
 
 struct alignas(64) InvertedList {
   std::vector<int32_t> ids;
-  std::vector<float> data;
+  AlignedFloatVector data;
+
 
   void reserve(size_t n_vecs, size_t dim);
   void add(int32_t id, const float *vec, size_t dim);
@@ -89,7 +91,7 @@ private:
   size_t nlist_{0};
   MetricType metric_{MetricType::L2};
   bool is_trained_{false};
-  std::vector<float> centroids_;    // Size: nlist * dim
+  AlignedFloatVector centroids_;    // Size: nlist * dim (64-byte aligned)
   std::vector<InvertedList> lists_; // Size: nlist
 };
 
