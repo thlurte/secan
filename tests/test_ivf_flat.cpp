@@ -11,6 +11,20 @@ void test_inverted_list_alignment() {
   std::cout << "\n--- Testing InvertedList Cache Alignment ---" << std::endl;
   CHECK(alignof(secan::InvertedList) >= 64);
   CHECK(sizeof(secan::InvertedList) >= 64);
+
+  secan::InvertedList list;
+  list.reserve(10, 128);
+  CHECK((reinterpret_cast<uintptr_t>(list.data.data()) % 64) == 0);
+
+  // Add past capacity to force dynamic reallocation
+  std::vector<float> vec(128, 1.0f);
+  for (int32_t i = 0; i < 25; ++i) {
+    list.add(i, vec.data(), 128);
+  }
+  CHECK((reinterpret_cast<uintptr_t>(list.data.data()) % 64) == 0);
+
+  secan::IvfFlatIndex index(128, 16);
+  CHECK((reinterpret_cast<uintptr_t>(index.get_centroids()) % 64) == 0);
 }
 
 void test_inverted_list_operations() {
