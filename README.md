@@ -208,6 +208,8 @@ int main() {
 - [x] IVF-Flat Index: $k$-means & spherical $k$-means centroid training and multi-probe query routing (`IvfFlatIndex`)
 - [x] Inverted list distribution diagnostics (`InvertedListStats` skew analysis)
 - [ ] Product Quantization (PQ) and Asymmetric Distance Computation (ADC)
+- [ ] Scalar Quantization (SQ8) & AVX-512 VNNI Kernel (`_mm512_dpbusd_epi32` INT8 $4\times$ throughput compute)
+- [ ] 1-Bit Binary Quantization & AVX-512 Hamming Kernel (`_mm512_popcnt_epi64`)
 - [ ] HNSW graph indexing for sub-millisecond approximate nearest neighbor search
 
 
