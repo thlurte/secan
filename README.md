@@ -139,6 +139,23 @@ python3 scripts/sweep_memory_mountain.py
 ### SIFT-100K End-to-End Index Benchmarks ($D = 128$, $N = 100{,}000$, Float32)
 *Benchmarked on AMD Zen 4 Hawk Point (12-Core @ 4.30 GHz, L1D 32 KiB, L2 1 MiB, L3 16 MiB). Ground-truth Recall@10 evaluated against exact SIFT nearest neighbors.*
 
+### 8-Bit Scalar Quantization (SQ8) & Asymmetric Distance Computation
+*Benchmarked on AMD Zen 4 Hawk Point ($D = 128$, `bench_quantization`). Percentile clipping ($0.05\text{th}/99.95\text{th}$) preserves dynamic range while shrinking working memory by **$4\times$**.*
+
+<p align="center">
+  <img src="assets/quantization_benchmark.png" alt="Quantization Benchmark" width="900"/>
+</p>
+
+| Metric ($N = 100{,}000$ Vectors, $D = 128$) | FP32 AVX2 Baseline | **SQ8 AVX2 (Compressed)** | **Improvement / Speedup** |
+|:---|:---:|:---:|:---:|
+| **Full Dataset Memory Footprint** | $51.2\text{ MB}$ (Spilled to DRAM) | **$12.8\text{ MB}$ (L3 Cache Resident!)** | **$4.0\times$ Memory Reduction** |
+| **Exact Scan Query Latency** | $2424\text{ }\mu\text{s}$ ($2.42\text{ ms}$) | **$523\text{ }\mu\text{s}$ ($0.52\text{ ms}$)** | **$4.64\times$ Faster!** 🚀 |
+| **Scan Throughput** | $41.91\text{ Million vecs/s}$ | **$192.95\text{ Million vecs/s}$** | **$4.60\times$ Higher Throughput** |
+| **Reconstruction MSE** | $0.00$ (Lossless) | $< 0.25$ | **$> 99.9\%$ Recall Parity** |
+
+> **Architectural Takeaway**: When scaling from $10\text{k}$ to $100\text{k}$ vectors, FP32 spills out of the 16 MiB L3 cache into main memory, causing scan throughput to plummet. In contrast, **SQ8 retains full L3 cache residency** ($12.8\text{ MB} < 16\text{ MB}$), delivering a massive **$4.64\times$ speedup** and sustaining nearly $200\text{M}$ vector evaluations per second.
+
+
 | Index Architecture | Configuration / Parameter | Latency / Query | Throughput (QPS) | Recall@10 | Microarchitectural Mechanism |
 |:---|:---|:---:|:---:|:---:|:---|
 | **`Flat2DIndex` (Exact Oracle)** | Single-Query Exact Scan | $2.64\text{ ms}$ | **$378\text{ QPS}$** | **$100.0\%$** | AVX2 unroll-4 streaming, DRAM bandwidth-limited |
