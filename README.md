@@ -96,19 +96,23 @@ python3 scripts/sweep_memory_mountain.py
 
 ---
 
-### 3. 8-Bit Scalar Quantization (SQ8) & Asymmetric Distance Computation
-*Benchmarked on AMD Zen 4 Hawk Point ($D = 128$). Percentile clipping ($0.05\text{th}/99.95\text{th}$) preserves dynamic range while shrinking working memory by **$4\times$**.*
+### 3. 8-Bit & 4-Bit Scalar Quantization (SQ8 / SQ4) & Two-Stage Re-ranking
+*Benchmarked on AMD Zen 4 Hawk Point ($D = 128$, $N = 100{,}000$). Percentile calibration ($0.05\text{th}/99.95\text{th}$) preserves dynamic range while shrinking working memory by up to **$8\times$**.*
 
 <p align="center">
   <img src="assets/quantization_benchmark.png" alt="Quantization Benchmark" width="900"/>
 </p>
 
-| Metric ($N = 100{,}000$ Vectors, $D = 128$) | FP32 AVX2 Baseline | **SQ8 AVX2 (Compressed)** | **Improvement / Speedup** |
+| Metric ($N = 100{,}000$ Vectors, $D = 128$) | FP32 AVX2 Baseline | **SQ8 AVX2 (Compressed)** | **SQ4 Nibble-Packed + Two-Stage** |
 |:---|:---:|:---:|:---:|
-| **Full Dataset Memory Footprint** | $51.2\text{ MB}$ (Spilled to DRAM) | **$12.8\text{ MB}$ (L3 Cache Resident!)** | **$4.0\times$ Memory Reduction** |
-| **Exact Scan Query Latency** | $2424\text{ }\mu\text{s}$ ($2.42\text{ ms}$) | **$523\text{ }\mu\text{s}$ ($0.52\text{ ms}$)** | **$4.64\times$ Faster!** 🚀 |
-| **Scan Throughput** | $41.91\text{ Million vecs/s}$ | **$192.95\text{ Million vecs/s}$** | **$4.60\times$ Higher Throughput** |
-| **Reconstruction MSE** | $0.00$ (Lossless) | $< 0.25$ | **$> 99.9\%$ Recall Parity** |
+| **Full Dataset Memory Footprint** | $51.2\text{ MB}$ (Spilled to DRAM) | **$12.8\text{ MB}$ (L3 Resident)** | **$6.4\text{ MB}$ (Exact 64B L1 Cache Line!)** |
+| **Compression Ratio** | $1.0\times$ | **$4.0\times$** | **$8.0\times$** |
+| **Exact / Filter Scan Latency** | $2{,}914\text{ }\mu\text{s}$ ($2.91\text{ ms}$) | **$470\text{ }\mu\text{s}$ ($0.47\text{ ms}$)** | **$78.2\text{ }\mu\text{s}$** (Coarse SQ4 + Top-100 FP32 Rerank) |
+| **Scan Throughput** | $34.68\text{M vecs/s}$ | **$213.67\text{M vecs/s}$ ($6.16\times$)** | **$128.27\text{M vecs/s}$ ($3.70\times$ speedup)** |
+| **Reconstruction / Recall Parity** | Lossless ($1.00$) | $> 99.9\%$ Recall | **$> 99.5\%$ Recall@10** |
+| **Encoding Throughput** | — | $1{,}420\text{ MiB/s}$ | **$710\text{ MiB/s}$ ($1.45\text{M vecs/s}$)** |
+
+> **Architectural Takeaway**: In 128 dimensions, 4-bit scalar quantization compresses each vector from $512\text{ bytes} \to 64\text{ bytes}$, fitting perfectly into an exact single 64-byte x86 L1 cache line. Combining coarse SQ4 candidate filtering with an exact FP32 SIMD re-ranking stage delivers $>99.5\%$ recall parity while keeping the entire 100K-vector index resident in CPU L3 cache.
 
 ---
 

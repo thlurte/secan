@@ -196,6 +196,135 @@ void test_quantizer_sift_reconstruction() {
   }
 }
 
+#include "secan/search/reranker.h"
+#include "secan/search/distance_avx2.h"
+
+void test_quantizer_sq4_nibble_packing() {
+  const size_t dim = 128;
+  secan::ScalarQuantizer4 sq4(dim);
+  CHECK(sq4.bytes_per_vector() == 64); // Exactly 1 cache line!
+
+  std::vector<float> data(dim);
+  for (size_t d = 0; d < dim; ++d) {
+    data[d] = static_cast<float>(d) / 128.0f;
+  }
+
+  sq4.train(1, data.data());
+  CHECK(sq4.is_trained());
+
+  std::vector<uint8_t> packed(sq4.bytes_per_vector());
+  std::vector<float> decoded(dim);
+
+  sq4.encode(data.data(), packed.data(), 1);
+  sq4.decode(packed.data(), decoded.data(), 1);
+
+  CHECK(packed.size() == 64);
+
+  // Verify reconstruction within step tolerance
+  float max_step = sq4.step();
+  for (size_t d = 0; d < dim; ++d) {
+    float diff = std::abs(data[d] - decoded[d]);
+    CHECK(diff <= max_step + 1e-4f);
+  }
+}
+
+void test_twostage_reranker_recall() {
+  const size_t dim = 128;
+  const size_t num_vectors = 2000;
+  const size_t k = 10;
+  const size_t coarse_m = 100;
+
+  std::mt19937 rng(42);
+  std::normal_distribution<float> dist(0.0f, 1.0f);
+  std::vector<float> base_data(num_vectors * dim);
+  for (size_t i = 0; i < base_data.size(); ++i) {
+    base_data[i] = dist(rng);
+  }
+  secan::normalize_dataset_avx2(base_data.data(), num_vectors, dim);
+
+  secan::ScalarQuantizer4 sq4(dim);
+  sq4.train(num_vectors, base_data.data());
+
+  std::vector<uint8_t> packed_base(num_vectors * sq4.bytes_per_vector());
+  sq4.encode(base_data.data(), packed_base.data(), num_vectors);
+
+  secan::TwoStageReranker reranker(sq4, packed_base.data(), base_data.data(), num_vectors, dim);
+
+  // Generate 20 test queries
+  size_t num_queries = 20;
+  std::vector<float> queries(num_queries * dim);
+  for (size_t i = 0; i < queries.size(); ++i) {
+    queries[i] = dist(rng);
+  }
+  secan::normalize_dataset_avx2(queries.data(), num_queries, dim);
+
+  size_t total_recalled = 0;
+  for (size_t q = 0; q < num_queries; ++q) {
+    const float* query_ptr = queries.data() + q * dim;
+
+    // Ground truth exact scan
+    std::vector<SearchResult> exact_results(num_vectors);
+    for (size_t i = 0; i < num_vectors; ++i) {
+      float dist_exact = secan::l2_squared_avx2_unroll4(query_ptr, base_data.data() + i * dim, dim);
+      exact_results[i] = SearchResult{static_cast<int>(i), dist_exact};
+    }
+    std::partial_sort(exact_results.begin(), exact_results.begin() + k, exact_results.end(),
+                      [](const SearchResult& a, const SearchResult& b) { return a.distance < b.distance; });
+
+    // Two-stage re-ranking
+    auto reranked = reranker.search(query_ptr, k, coarse_m);
+    CHECK(reranked.size() == k);
+
+    // Measure overlap (Recall@K)
+    for (size_t i = 0; i < k; ++i) {
+      for (size_t j = 0; j < k; ++j) {
+        if (reranked[i].index == exact_results[j].index) {
+          total_recalled++;
+          break;
+        }
+      }
+    }
+  }
+
+  double recall_at_10 = static_cast<double>(total_recalled) / static_cast<double>(num_queries * k);
+  CHECK(recall_at_10 >= 0.95); // High recall guaranteed by two-stage filtering
+}
+
+#include "secan/quantization/quantized_dataset.h"
+
+void test_quantized_dataset_span_views() {
+  const size_t num_vectors = 10;
+  const size_t dim = 128;
+
+  // Test SQ8 Dataset View
+  std::vector<uint8_t> sq8_raw(num_vectors * dim, 42);
+  secan::QuantizedDatasetSQ8 dataset_sq8(num_vectors, dim, sq8_raw);
+
+  CHECK(dataset_sq8.size() == num_vectors);
+  CHECK(dataset_sq8.dim() == dim);
+  CHECK(dataset_sq8.nbytes() == num_vectors * dim);
+
+  std::span<const uint8_t> v0 = dataset_sq8.get_vector(0);
+  CHECK(v0.size() == dim);
+  CHECK(v0[0] == 42);
+
+  std::span<const uint8_t> block = dataset_sq8.get_block(2, 3);
+  CHECK(block.size() == 3 * dim);
+
+  // Test SQ4 Dataset View
+  const size_t bytes_per_vec = 64;
+  std::vector<uint8_t> sq4_raw(num_vectors * bytes_per_vec, 0xAB);
+  secan::QuantizedDatasetSQ4 dataset_sq4(num_vectors, dim, sq4_raw);
+
+  CHECK(dataset_sq4.size() == num_vectors);
+  CHECK(dataset_sq4.bytes_per_vector() == bytes_per_vec);
+  CHECK(dataset_sq4.nbytes() == num_vectors * bytes_per_vec);
+
+  std::span<const uint8_t> v0_sq4 = dataset_sq4.get_vector(0);
+  CHECK(v0_sq4.size() == bytes_per_vec);
+  CHECK(v0_sq4[0] == 0xAB);
+}
+
 int main() {
   test_quantizer_untrained_exceptions();
   test_quantizer_invalid_args();
@@ -203,5 +332,9 @@ int main() {
   test_quantizer_percentile_clipping();
   test_quantizer_roundtrip_reconstruction();
   test_quantizer_sift_reconstruction();
+  test_quantizer_sq4_nibble_packing();
+  test_twostage_reranker_recall();
+  test_quantized_dataset_span_views();
   return report_results("scalar_quantizer_tests");
 }
+

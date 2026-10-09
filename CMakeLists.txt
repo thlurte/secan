@@ -20,6 +20,7 @@ add_library(secan_lib
   src/search/distance.cpp
   src/search/distance_avx2.cpp
   src/search/distance_avx512.cpp
+  src/search/reranker.cpp
   src/tree/kd_tree.cpp
   src/index/flat.cpp
   src/index/ivf_flat.cpp
