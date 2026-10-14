@@ -1,5 +1,6 @@
 #include "secan/quantization/binary_quantizer.h"
 #include "secan/quantization/distance_sq8.h"
+#include "secan/quantization/fastscan.h"
 #include "secan/quantization/product_quantizer.h"
 #include "secan/quantization/scalar_quantizer.h"
 #include "secan/search/distance_avx2.h"
@@ -24,6 +25,9 @@ struct QuantizationBenchmarkEnvironment {
   secan::ScalarQuantizer4 quantizer4;
   secan::ProductQuantizer pq;
   secan::BinaryQuantizer bq;
+  secan::FastScan4Bit fastscan;
+  std::vector<float> fastscan_codebooks;
+  std::vector<uint8_t> base_fastscan_packed;
   bool is_loaded{false};
 
   void load() {
@@ -73,6 +77,24 @@ struct QuantizationBenchmarkEnvironment {
     bq = secan::BinaryQuantizer(base.dim);
     base_bq.resize(base.num_vectors * bq.num_u64());
     bq.encode(base.data.data(), base_bq.data(), base.num_vectors);
+
+    // Initialize FastScan 4-bit (M=16 subspaces, 16 centroids per subspace)
+    const size_t fs_M = 16;
+    fastscan = secan::FastScan4Bit(base.dim, fs_M);
+    fastscan_codebooks.resize(fs_M * secan::FastScan4Bit::K_SUB * (base.dim / fs_M));
+    std::mt19937 fs_rng(1337);
+    std::normal_distribution<float> fs_norm(0.0f, 1.0f);
+    for (float &val : fastscan_codebooks) {
+      val = fs_norm(fs_rng);
+    }
+    std::vector<uint8_t> fs_raw_codes(base.num_vectors * fs_M);
+    std::uniform_int_distribution<uint8_t> fs_dist(0, 15);
+    for (uint8_t &c : fs_raw_codes) {
+      c = fs_dist(fs_rng);
+    }
+    size_t fs_blocks = (base.num_vectors + 31) / 32;
+    base_fastscan_packed.resize(fs_blocks * fs_M * 16);
+    fastscan.pack_codes(fs_raw_codes.data(), base_fastscan_packed.data(), base.num_vectors);
 
     is_loaded = true;
   }
@@ -371,6 +393,27 @@ static void BM_Scan_Asymmetric_BQ(benchmark::State &state) {
   state.SetItemsProcessed(state.iterations() * num_vectors);
 }
 
+static void BM_Scan_FastScan_4Bit(benchmark::State &state) {
+  g_quant_env.load();
+  secan::enable_ftz_daz();
+
+  const size_t num_vectors = state.range(0);
+  const float *query = g_quant_env.base.data.data();
+  const uint8_t *packed_codes = g_quant_env.base_fastscan_packed.data();
+
+  std::vector<uint8_t> lut(g_quant_env.fastscan.M() * secan::FastScan4Bit::K_SUB);
+  g_quant_env.fastscan.compute_query_lut_uint8(
+      query, g_quant_env.fastscan_codebooks.data(), lut.data());
+  std::vector<uint16_t> dists(num_vectors);
+
+  for (auto _ : state) {
+    g_quant_env.fastscan.scan(packed_codes, lut.data(), dists.data(), num_vectors);
+    benchmark::DoNotOptimize(dists.data());
+  }
+
+  state.SetItemsProcessed(state.iterations() * num_vectors);
+}
+
 // Register benchmarks across vector batch sizes
 BENCHMARK(BM_SQ8_Train)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_SQ4_Train)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
@@ -384,6 +427,7 @@ BENCHMARK(BM_SQ4_Decode)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond)
 BENCHMARK(BM_Scan_FP32_AVX2)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_Scan_SQ8_AVX2)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_Scan_PQ_ADC)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
+BENCHMARK(BM_Scan_FastScan_4Bit)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_Scan_Asymmetric_BQ)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_TwoStage_SQ4_Rerank)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_Subspace_KMeans)->Arg(1000)->Arg(10000)->Unit(benchmark::kMillisecond);

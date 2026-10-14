@@ -28,6 +28,7 @@ add_library(secan_lib
   src/quantization/distance_sq8.cpp
   src/quantization/product_quantizer.cpp
   src/quantization/binary_quantizer.cpp
+  src/quantization/fastscan.cpp
 )
 target_include_directories(secan_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
