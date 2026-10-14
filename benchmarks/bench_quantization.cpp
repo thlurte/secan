@@ -327,20 +327,14 @@ static void BM_Scan_PQ_ADC(benchmark::State &state) {
   const size_t num_vectors = state.range(0);
   const float *query = g_quant_env.base.data.data();
   const uint8_t *codes = g_quant_env.base_pq.data();
-  const size_t M = 8;
+
+  // Precompute 8 KB query LUT (fits entirely in 32 KB L1D cache)
+  std::vector<float> lut = g_quant_env.pq.compute_query_lut(query);
+  std::vector<float> dists(num_vectors);
 
   for (auto _ : state) {
-    float min_dist = 1e30f;
-    size_t min_idx = 0;
-    for (size_t i = 0; i < num_vectors; ++i) {
-      float d = g_quant_env.pq.compute_adc_distance(query, codes + i * M);
-      if (d < min_dist) {
-        min_dist = d;
-        min_idx = i;
-      }
-    }
-    benchmark::DoNotOptimize(min_dist);
-    benchmark::DoNotOptimize(min_idx);
+    g_quant_env.pq.scan_adc_lut(lut.data(), codes, dists.data(), num_vectors);
+    benchmark::DoNotOptimize(dists.data());
   }
 
   state.SetItemsProcessed(state.iterations() * num_vectors);

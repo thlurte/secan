@@ -146,4 +146,73 @@ float ProductQuantizer::compute_adc_distance(const float *query, const uint8_t *
     return total_dist;
 }
 
+void ProductQuantizer::compute_query_lut(const float *query, float *out_lut) const {
+    for (size_t m = 0; m < M; ++m) {
+        const float *sub_query = query + m * d_sub;
+        float *m_lut = out_lut + m * k_sub;
+        for (size_t c = 0; c < k_sub; ++c) {
+            const float *sub_centroid = codebooks.data() + (m * k_sub + c) * d_sub;
+            m_lut[c] = l2_squared_avx2_unroll4(sub_query, sub_centroid, d_sub);
+        }
+    }
+}
+
+std::vector<float> ProductQuantizer::compute_query_lut(const float *query) const {
+    std::vector<float> lut(M * k_sub);
+    compute_query_lut(query, lut.data());
+    return lut;
+}
+
+float ProductQuantizer::compute_adc_distance_lut(const float *lut, const uint8_t *code) const noexcept {
+    float dist = 0.0f;
+    for (size_t m = 0; m < M; ++m) {
+        dist += lut[m * k_sub + code[m]];
+    }
+    return dist;
+}
+
+void ProductQuantizer::scan_adc_lut(
+    const float *lut,
+    const uint8_t *codes,
+    float *out_distances,
+    size_t n_vectors
+) const noexcept {
+    size_t i = 0;
+    // 4-way unrolled across vectors to hide memory latency and saturate execution pipelines
+    for (; i + 4 <= n_vectors; i += 4) {
+        const uint8_t *c0 = codes + (i + 0) * M;
+        const uint8_t *c1 = codes + (i + 1) * M;
+        const uint8_t *c2 = codes + (i + 2) * M;
+        const uint8_t *c3 = codes + (i + 3) * M;
+
+        float d0 = 0.0f;
+        float d1 = 0.0f;
+        float d2 = 0.0f;
+        float d3 = 0.0f;
+
+        for (size_t m = 0; m < M; ++m) {
+            const float *m_lut = lut + m * k_sub;
+            d0 += m_lut[c0[m]];
+            d1 += m_lut[c1[m]];
+            d2 += m_lut[c2[m]];
+            d3 += m_lut[c3[m]];
+        }
+
+        out_distances[i + 0] = d0;
+        out_distances[i + 1] = d1;
+        out_distances[i + 2] = d2;
+        out_distances[i + 3] = d3;
+    }
+
+    // Remainder tail loop
+    for (; i < n_vectors; ++i) {
+        const uint8_t *c = codes + i * M;
+        float d = 0.0f;
+        for (size_t m = 0; m < M; ++m) {
+            d += lut[m * k_sub + c[m]];
+        }
+        out_distances[i] = d;
+    }
+}
+
 } // namespace secan

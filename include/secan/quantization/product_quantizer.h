@@ -33,6 +33,30 @@ public:
     void decode(const uint8_t *codes, float *dst, size_t num_vectors) const;
 
     float compute_adc_distance(const float *query, const uint8_t *code) const;
+
+    /**
+     * @brief Precomputes distance between query subvectors and all centroids in each subspace.
+     * Shape: M * k_sub floats (for M=8, k_sub=256: 2048 floats = 8 KB, L1D resident).
+     * @param query Input float32 query vector of size dim.
+     * @param out_lut Pre-allocated buffer of size M * k_sub.
+     */
+    void compute_query_lut(const float *query, float *out_lut) const;
+    std::vector<float> compute_query_lut(const float *query) const;
+
+    /**
+     * @brief Evaluates asymmetric distance using precomputed LUT in O(M) table lookups.
+     */
+    float compute_adc_distance_lut(const float *lut, const uint8_t *code) const noexcept;
+
+    /**
+     * @brief High-throughput 4-way unrolled dataset scan using precomputed query LUT.
+     */
+    void scan_adc_lut(
+        const float *lut,
+        const uint8_t *codes,
+        float *out_distances,
+        size_t n_vectors
+    ) const noexcept;
 };
 
 } // namespace secan
