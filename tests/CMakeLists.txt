@@ -42,6 +42,10 @@ add_executable(test_product_quantizer test_product_quantizer.cpp)
 target_link_libraries(test_product_quantizer PRIVATE secan_lib)
 target_include_directories(test_product_quantizer PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
+add_executable(test_binary_quantizer test_binary_quantizer.cpp)
+target_link_libraries(test_binary_quantizer PRIVATE secan_lib)
+target_include_directories(test_binary_quantizer PRIVATE ${CMAKE_SOURCE_DIR}/include)
+
 enable_testing()
 add_test(NAME distance_tests COMMAND test_distance)
 add_test(NAME linear_scan_tests COMMAND test_linear_scan)
@@ -54,6 +58,7 @@ add_test(NAME ivf_flat_tests COMMAND test_ivf_flat)
 add_test(NAME scalar_quantizer_tests COMMAND test_scalar_quantizer)
 add_test(NAME product_quantizer_tests COMMAND test_product_quantizer)
 add_test(NAME distance_sq8_tests COMMAND test_distance_sq8)
+add_test(NAME binary_quantizer_tests COMMAND test_binary_quantizer)
 
 
 

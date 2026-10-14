@@ -1,9 +1,12 @@
+#include "secan/quantization/binary_quantizer.h"
 #include "secan/quantization/distance_sq8.h"
+#include "secan/quantization/product_quantizer.h"
 #include "secan/quantization/scalar_quantizer.h"
 #include "secan/search/distance_avx2.h"
 #include "secan/utils/io.h"
 #include "secan/utils/normalize.h"
 #include <benchmark/benchmark.h>
+#include <cstring>
 #include <filesystem>
 #include <iostream>
 #include <random>
@@ -15,8 +18,12 @@ struct QuantizationBenchmarkEnvironment {
   secan::FloatDataset base;
   std::vector<uint8_t> base_sq8;
   std::vector<uint8_t> base_sq4;
+  std::vector<uint8_t> base_pq;
+  std::vector<uint64_t> base_bq;
   secan::ScalarQuantizer8 quantizer;
   secan::ScalarQuantizer4 quantizer4;
+  secan::ProductQuantizer pq;
+  secan::BinaryQuantizer bq;
   bool is_loaded{false};
 
   void load() {
@@ -54,6 +61,18 @@ struct QuantizationBenchmarkEnvironment {
 
     base_sq4.resize(base.num_vectors * quantizer4.bytes_per_vector());
     quantizer4.encode(base.data.data(), base_sq4.data(), base.num_vectors);
+
+    // Train PQ (M=8 subspaces, d_sub=16) on base sample (10k vectors)
+    pq = secan::ProductQuantizer(base.dim, 8);
+    pq.train(base.data.data(), std::min(base.num_vectors, size_t(10000)), 15);
+
+    base_pq.resize(base.num_vectors * 8);
+    pq.encode(base.data.data(), base_pq.data(), base.num_vectors);
+
+    // Initialize BinaryQuantizer (1-bit BQ)
+    bq = secan::BinaryQuantizer(base.dim);
+    base_bq.resize(base.num_vectors * bq.num_u64());
+    bq.encode(base.data.data(), base_bq.data(), base.num_vectors);
 
     is_loaded = true;
   }
@@ -275,6 +294,89 @@ static void BM_TwoStage_SQ4_Rerank(benchmark::State &state) {
   state.SetItemsProcessed(state.iterations() * num_vectors);
 }
 
+static void BM_Subspace_KMeans(benchmark::State &state) {
+  g_quant_env.load();
+  secan::enable_ftz_daz();
+
+  const size_t num_subvectors = state.range(0);
+  const size_t d_sub = 16;
+  const size_t k_centroids = 256;
+  const size_t iters = 15;
+
+  // Extract contiguous subvectors
+  std::vector<float> sub_data(num_subvectors * d_sub);
+  for (size_t i = 0; i < num_subvectors; ++i) {
+    std::memcpy(sub_data.data() + i * d_sub,
+                g_quant_env.base.data.data() + i * g_quant_env.base.dim,
+                d_sub * sizeof(float));
+  }
+
+  for (auto _ : state) {
+    auto centroids = secan::train_subspace_kmeans(
+        sub_data.data(), num_subvectors, d_sub, k_centroids, iters);
+    benchmark::DoNotOptimize(centroids.data());
+  }
+
+  state.SetItemsProcessed(state.iterations() * num_subvectors);
+}
+
+static void BM_Scan_PQ_ADC(benchmark::State &state) {
+  g_quant_env.load();
+  secan::enable_ftz_daz();
+
+  const size_t num_vectors = state.range(0);
+  const float *query = g_quant_env.base.data.data();
+  const uint8_t *codes = g_quant_env.base_pq.data();
+  const size_t M = 8;
+
+  for (auto _ : state) {
+    float min_dist = 1e30f;
+    size_t min_idx = 0;
+    for (size_t i = 0; i < num_vectors; ++i) {
+      float d = g_quant_env.pq.compute_adc_distance(query, codes + i * M);
+      if (d < min_dist) {
+        min_dist = d;
+        min_idx = i;
+      }
+    }
+    benchmark::DoNotOptimize(min_dist);
+    benchmark::DoNotOptimize(min_idx);
+  }
+
+  state.SetItemsProcessed(state.iterations() * num_vectors);
+}
+
+static void BM_Scan_Asymmetric_BQ(benchmark::State &state) {
+  g_quant_env.load();
+  secan::enable_ftz_daz();
+
+  const size_t num_vectors = state.range(0);
+  const float *query = g_quant_env.base.data.data();
+  const uint64_t *codes = g_quant_env.base_bq.data();
+  const size_t num_u64 = g_quant_env.bq.num_u64();
+
+  float query_sum = 0.0f;
+  for (size_t d = 0; d < g_quant_env.base.dim; ++d) {
+    query_sum += query[d];
+  }
+
+  for (auto _ : state) {
+    float max_ip = -1e30f;
+    size_t max_idx = 0;
+    for (size_t i = 0; i < num_vectors; ++i) {
+      float ip = secan::asymmetric_ip_bq(query, codes + i * num_u64, num_u64, query_sum);
+      if (ip > max_ip) {
+        max_ip = ip;
+        max_idx = i;
+      }
+    }
+    benchmark::DoNotOptimize(max_ip);
+    benchmark::DoNotOptimize(max_idx);
+  }
+
+  state.SetItemsProcessed(state.iterations() * num_vectors);
+}
+
 // Register benchmarks across vector batch sizes
 BENCHMARK(BM_SQ8_Train)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_SQ4_Train)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
@@ -287,7 +389,10 @@ BENCHMARK(BM_SQ4_Decode)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond)
 
 BENCHMARK(BM_Scan_FP32_AVX2)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_Scan_SQ8_AVX2)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
+BENCHMARK(BM_Scan_PQ_ADC)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
+BENCHMARK(BM_Scan_Asymmetric_BQ)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
 BENCHMARK(BM_TwoStage_SQ4_Rerank)->Arg(10000)->Arg(100000)->Unit(benchmark::kMicrosecond);
+BENCHMARK(BM_Subspace_KMeans)->Arg(1000)->Arg(10000)->Unit(benchmark::kMillisecond);
 
 BENCHMARK_MAIN();
 
